@@ -1,0 +1,6 @@
+{
+  "name": "Lazuardi Resources Room",
+  "description": "Integrated School Resources & Service Management System for Sekolah Lazuardi GCS",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
