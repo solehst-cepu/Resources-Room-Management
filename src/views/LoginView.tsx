@@ -23,7 +23,7 @@ import {
 import { RoleBadge } from '../components/common/Badge';
 
 export const LoginView: React.FC = () => {
-  const { users, login, loginWithGoogleEmail, switchUserRole } = useApp();
+  const { users, login, loginWithGoogleEmail } = useApp();
   
   // Login Mode: 'google' (default, passwordless SSO) or 'manual' (username & password)
   const [authMode, setAuthMode] = useState<'google' | 'manual'>('google');
@@ -35,8 +35,8 @@ export const LoginView: React.FC = () => {
   const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
 
   // Manual Login state
-  const [username, setUsername] = useState('admin.rr');
-  const [password, setPassword] = useState('password123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [manualError, setManualError] = useState('');
 
   // Handle Google Fast Login via Typed Email
@@ -442,43 +442,6 @@ export const LoginView: React.FC = () => {
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </form>
-
-                {/* Quick Role Helper for Manual Mode */}
-                <div className="pt-3 border-t border-slate-100">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">
-                    Akses Cepat 1-Klik Berdasarkan Peran:
-                  </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                    <button
-                      type="button"
-                      onClick={() => switchUserRole('super_admin')}
-                      className="p-2 rounded-lg border border-slate-200 hover:bg-blue-50 text-[11px] font-semibold text-slate-700 hover:text-blue-700 cursor-pointer"
-                    >
-                      Super Admin
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => switchUserRole('admin_rr')}
-                      className="p-2 rounded-lg border border-slate-200 hover:bg-blue-50 text-[11px] font-semibold text-slate-700 hover:text-blue-700 cursor-pointer"
-                    >
-                      Admin RR
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => switchUserRole('user')}
-                      className="p-2 rounded-lg border border-slate-200 hover:bg-blue-50 text-[11px] font-semibold text-slate-700 hover:text-blue-700 cursor-pointer"
-                    >
-                      Guru / Staff
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => switchUserRole('manager')}
-                      className="p-2 rounded-lg border border-slate-200 hover:bg-blue-50 text-[11px] font-semibold text-slate-700 hover:text-blue-700 cursor-pointer"
-                    >
-                      Kepala Unit
-                    </button>
-                  </div>
-                </div>
               </div>
             )}
           </div>

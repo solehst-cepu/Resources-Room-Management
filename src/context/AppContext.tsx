@@ -1583,6 +1583,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = users.find(u => u.id === id);
     if (!target) return;
     setUsers(prev => prev.filter(u => u.id !== id));
+    
+    // Delete from Supabase cloud table
+    deleteFromTable('users', 'id', id).catch(err => {
+      console.warn('Cloud delete user sync error:', err);
+    });
+
     addAuditLog('Hapus User', 'Pengaturan', `Menghapus akun pengguna ${target.name} (${target.email})`);
     showToast('info', 'Pengguna Dihapus', `Akun ${target.name} telah dihapus dari sistem`);
   };
