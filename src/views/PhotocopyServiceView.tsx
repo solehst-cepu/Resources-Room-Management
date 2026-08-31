@@ -22,23 +22,69 @@ import {
   AlertTriangle,
   BellRing,
   Send,
-  ShieldCheck
+  ShieldCheck,
+  Trash2,
+  Compass
 } from 'lucide-react';
 import { StatusBadge, UrgencyBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { UserSearchSelect } from '../components/common/UserSearchSelect';
+import { TrackOrderModal } from '../components/common/TrackOrderModal';
 
 interface PhotocopyServiceViewProps {
   onOpenReceipt: (req: ServiceRequest) => void;
 }
 
 export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOpenReceipt }) => {
-  const { currentUser, users, units, requests, createRequest, updateRequestStatus } = useApp();
+  const { currentUser, users, units, requests, createRequest, updateRequestStatus, deleteRequest } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [unitFilter, setUnitFilter] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Delete transaction confirmation state
+  const [requestToDelete, setRequestToDelete] = useState<ServiceRequest | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+  // Live Order Tracking State
+  const [trackingRequest, setTrackingRequest] = useState<ServiceRequest | null>(null);
+  const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
+  const [isOrderPickerOpen, setIsOrderPickerOpen] = useState(false);
+
+  const canManageOrDelete = currentUser?.role === 'super_admin' || currentUser?.role === 'admin_rr';
+
+  const handleOpenTracking = (req: ServiceRequest) => {
+    setTrackingRequest(req);
+    setIsTrackingModalOpen(true);
+  };
+
+  const handleQuickTrackMyOrder = () => {
+    const myActive = photocopyRequests.filter(
+      r => (r.userId === currentUser?.id || r.userEmail === currentUser?.email) && r.status !== 'Selesai' && r.status !== 'Ditolak'
+    );
+    if (myActive.length === 1) {
+      handleOpenTracking(myActive[0]);
+    } else {
+      setIsOrderPickerOpen(true);
+    }
+  };
+
+  const handleOpenDeleteConfirm = (req: ServiceRequest) => {
+    setRequestToDelete(req);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleExecuteDelete = () => {
+    if (!requestToDelete) return;
+    deleteRequest(requestToDelete.id);
+    if (selectedRequest?.id === requestToDelete.id) {
+      setIsActionModalOpen(false);
+      setSelectedRequest(null);
+    }
+    setIsDeleteModalOpen(false);
+    setRequestToDelete(null);
+  };
 
   // Form State
   const [selectedUserId, setSelectedUserId] = useState<string>(currentUser?.id || (users[0]?.id ?? ''));
@@ -233,6 +279,10 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
     .filter(r => r.status === 'Sedang Disiapkan')
     .reduce((acc, r) => acc + (r.photocopyDetail?.totalSheets || 0), 0);
 
+  const myActivePhotocopyCount = photocopyRequests.filter(
+    r => (r.userId === currentUser?.id || r.userEmail === currentUser?.email) && r.status !== 'Selesai' && r.status !== 'Ditolak'
+  ).length;
+
   // Common quick choices for document types
   const quickDocTypes = [
     'Soal Ujian / Penilaian',
@@ -266,7 +316,22 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            type="button"
+            onClick={handleQuickTrackMyOrder}
+            className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-bold rounded-xl shadow-2xs flex items-center gap-2 transition-colors cursor-pointer"
+            title="Lacak tahapan proses order fotokopi"
+          >
+            <Compass className="w-4 h-4 text-indigo-600 animate-spin-slow" />
+            <span>Lacak Order Saya</span>
+            {myActivePhotocopyCount > 0 && (
+              <span className="px-1.5 py-0.5 bg-indigo-600 text-white text-[10px] font-extrabold rounded-full">
+                {myActivePhotocopyCount}
+              </span>
+            )}
+          </button>
+
           <button
             onClick={handleOpenModal}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs flex items-center gap-2 transition-colors cursor-pointer"
@@ -463,18 +528,40 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
                       </td>
                       <td className="p-3.5 text-right space-x-1.5 whitespace-nowrap">
                         <button
+                          type="button"
+                          onClick={() => handleOpenTracking(req)}
+                          className="px-2.5 py-1 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-md transition-colors cursor-pointer inline-flex items-center gap-1 shadow-2xs"
+                          title="Lacak Progres Pengerjaan Order Foto Copy"
+                        >
+                          <Compass className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Lacak</span>
+                        </button>
+
+                        <button
                           onClick={() => onOpenReceipt(req)}
                           className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition-colors cursor-pointer"
                         >
                           SPK / Slip
                         </button>
                         
-                        {(currentUser?.role === 'super_admin' || currentUser?.role === 'manager' || currentUser?.role === 'admin_rr') && (
+                        {(currentUser?.role === 'super_admin' || currentUser?.role === 'manager' || currentUser?.role === 'admin_rr') && req.status !== 'Selesai' && req.status !== 'Ditolak' && (
                           <button
                             onClick={() => handleOpenActionModal(req)}
                             className="px-2.5 py-1 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors cursor-pointer"
                           >
                             Proses Mesin
+                          </button>
+                        )}
+
+                        {canManageOrDelete && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDeleteConfirm(req)}
+                            className="px-2.5 py-1 text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md transition-colors cursor-pointer inline-flex items-center gap-1"
+                            title="Hapus Transaksi"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Hapus</span>
                           </button>
                         )}
                       </td>
@@ -1042,14 +1129,182 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
               )}
             </div>
 
-            <div className="pt-3 border-t border-slate-100 flex justify-end">
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+              {canManageOrDelete ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = selectedRequest;
+                    setIsActionModalOpen(false);
+                    handleOpenDeleteConfirm(target);
+                  }}
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer"
+                  title="Hapus transaksi fotokopi ini"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Hapus Transaksi</span>
+                </button>
+              ) : <div />}
+
               <button
                 onClick={() => setIsActionModalOpen(false)}
-                className="px-4 py-1.5 border border-slate-300 rounded-lg font-semibold text-slate-700 cursor-pointer"
+                className="px-4 py-1.5 border border-slate-300 rounded-lg font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 transition-colors"
               >
                 Tutup
               </button>
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL (ADMIN & SUPER ADMIN) */}
+      {requestToDelete && (
+        <Modal
+          isOpen={isDeleteModalOpen}
+          onClose={() => {
+            setIsDeleteModalOpen(false);
+            setRequestToDelete(null);
+          }}
+          title="Konfirmasi Hapus Transaksi Fotokopi"
+          subtitle="Tindakan ini akan menghapus data transaksi secara permanen dari sistem"
+          maxWidth="md"
+        >
+          <div className="space-y-4 text-xs">
+            {/* Warning Alert Banner */}
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-900">
+              <div className="p-2 bg-rose-100 rounded-lg shrink-0 text-rose-700">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <strong className="block text-sm font-bold text-rose-950">
+                  Hapus transaksi {requestToDelete.requestNumber}?
+                </strong>
+                <p className="text-[11px] text-rose-800 leading-relaxed">
+                  Data permohonan fotokopi ini akan dihapus dari histori, antrean cetak, rekap laporan, dan database.
+                </p>
+              </div>
+            </div>
+
+            {/* Summary */}
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-slate-800">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">No. Transaksi</span>
+                  <strong className="text-sm font-mono text-slate-900">{requestToDelete.requestNumber}</strong>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status</span>
+                  <StatusBadge status={requestToDelete.status} size="sm" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
+                <div>
+                  <span className="text-slate-500 block">Pemohon:</span>
+                  <strong className="text-slate-900">{requestToDelete.userName}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Unit:</span>
+                  <span className="font-semibold text-slate-800">{requestToDelete.unit}</span>
+                </div>
+                {requestToDelete.photocopyDetail && (
+                  <div className="col-span-2 bg-white p-2 rounded-lg border border-slate-200 text-slate-700 space-y-0.5">
+                    <div>Jenis Dokumen: <strong>{requestToDelete.photocopyDetail.documentType}</strong></div>
+                    <div>Volume: <strong>{requestToDelete.photocopyDetail.pageCount} Hal × {requestToDelete.photocopyDetail.copyCount} Eks = {requestToDelete.photocopyDetail.totalSheets} Lembar ({requestToDelete.photocopyDetail.paperSize})</strong></div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setRequestToDelete(null);
+                }}
+                className="px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExecuteDelete}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Ya, Hapus Transaksi</span>
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* TRACK ORDER MODAL */}
+      <TrackOrderModal
+        isOpen={isTrackingModalOpen}
+        onClose={() => {
+          setIsTrackingModalOpen(false);
+          setTrackingRequest(null);
+        }}
+        request={trackingRequest}
+        onOpenReceipt={onOpenReceipt}
+      />
+
+      {/* QUICK ORDER PICKER MODAL (When multiple orders exist) */}
+      {isOrderPickerOpen && (
+        <Modal
+          isOpen={isOrderPickerOpen}
+          onClose={() => setIsOrderPickerOpen(false)}
+          title="Pilih Order Foto Copy yang Ingin Dilacak"
+          subtitle="Pilih dari daftar permohonan aktif atau seluruh riwayat permohonan fotokopi Anda"
+          maxWidth="lg"
+        >
+          <div className="space-y-3 text-xs max-h-[70vh] overflow-y-auto p-1">
+            {photocopyRequests
+              .filter(r => (currentUser?.role === 'super_admin' || currentUser?.role === 'admin_rr') || (r.userId === currentUser?.id || r.userEmail === currentUser?.email))
+              .slice(0, 10)
+              .map((req) => (
+                <div
+                  key={req.id}
+                  onClick={() => {
+                    setIsOrderPickerOpen(false);
+                    handleOpenTracking(req);
+                  }}
+                  className="p-3 bg-white hover:bg-indigo-50/70 border border-slate-200 hover:border-indigo-300 rounded-xl transition-all cursor-pointer flex items-center justify-between gap-3 shadow-2xs group"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <strong className="font-mono text-xs text-slate-900 group-hover:text-indigo-900">{req.requestNumber}</strong>
+                      <StatusBadge status={req.status} size="sm" />
+                      <UrgencyBadge urgency={req.urgency} />
+                    </div>
+                    <p className="text-xs font-semibold text-slate-800">
+                      {req.photocopyDetail?.documentType || req.purpose}
+                    </p>
+                    <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                      <span>{req.userName} ({req.unit})</span>
+                      <span>•</span>
+                      <span>{req.photocopyDetail?.totalSheets || 1} Lembar ({req.photocopyDetail?.paperSize || 'A4'})</span>
+                    </div>
+                  </div>
+
+                  <div className="px-3 py-1.5 bg-indigo-600 group-hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shrink-0 flex items-center gap-1">
+                    <Compass className="w-3.5 h-3.5" />
+                    <span>Lacak</span>
+                  </div>
+                </div>
+              ))}
+
+            {photocopyRequests.filter(r => (currentUser?.role === 'super_admin' || currentUser?.role === 'admin_rr') || (r.userId === currentUser?.id || r.userEmail === currentUser?.email)).length === 0 && (
+              <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-xl">
+                <Printer className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                <p className="font-semibold text-slate-600">Belum ada order fotokopi yang diajukan.</p>
+                <p className="text-[11px] text-slate-400 mt-1">Gunakan tombol "Form Permintaan Foto Copy" untuk membuat order baru.</p>
+              </div>
+            )}
           </div>
         </Modal>
       )}

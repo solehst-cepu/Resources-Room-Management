@@ -13,11 +13,14 @@ import {
   Layers,
   CheckCircle2,
   FileText,
-  FileType
+  FileType,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { StatusBadge } from '../components/common/Badge';
+import { Modal } from '../components/common/Modal';
 import { ServiceRequest } from '../types';
 
 interface ReportsViewProps {
@@ -25,7 +28,7 @@ interface ReportsViewProps {
 }
 
 export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }) => {
-  const { requests, units, currentUser } = useApp();
+  const { requests, units, currentUser, deleteRequest } = useApp();
 
   // Helper date generators
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -43,6 +46,24 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
   const [unitFilter, setUnitFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Delete transaction confirmation state
+  const [requestToDelete, setRequestToDelete] = useState<ServiceRequest | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+  const canManageOrDelete = currentUser?.role === 'super_admin' || currentUser?.role === 'admin_rr';
+
+  const handleOpenDeleteConfirm = (req: ServiceRequest) => {
+    setRequestToDelete(req);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleExecuteDelete = () => {
+    if (!requestToDelete) return;
+    deleteRequest(requestToDelete.id);
+    setIsDeleteModalOpen(false);
+    setRequestToDelete(null);
+  };
 
   // Date Range State
   const [startDate, setStartDate] = useState<string>(firstDayOfMonth);
@@ -1080,12 +1101,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
                   <th className="p-3.5">Jenis Layanan</th>
                   <th className="p-3.5">Keperluan &amp; Jumlah Volume</th>
                   <th className="p-3.5 text-center">Status</th>
+                  {canManageOrDelete && <th className="p-3.5 text-right">Aksi</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredRequests.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400">
+                    <td colSpan={canManageOrDelete ? 8 : 7} className="p-8 text-center text-slate-400">
                       Tidak ada data transaksi yang ditemukan.
                     </td>
                   </tr>
@@ -1126,6 +1148,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
                         <td className="p-3.5 text-center whitespace-nowrap">
                           <StatusBadge status={r.status} />
                         </td>
+                        {canManageOrDelete && (
+                          <td className="p-3.5 text-right whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDeleteConfirm(r)}
+                              className="px-2.5 py-1 text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md transition-colors cursor-pointer inline-flex items-center gap-1"
+                              title="Hapus Transaksi (Admin & Super Admin)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Hapus</span>
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })
@@ -1136,6 +1171,100 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
         )}
 
       </div>
+
+      {/* DELETE CONFIRMATION MODAL (ADMIN & SUPER ADMIN) */}
+      {requestToDelete && (
+        <Modal
+          isOpen={isDeleteModalOpen}
+          onClose={() => {
+            setIsDeleteModalOpen(false);
+            setRequestToDelete(null);
+          }}
+          title="Konfirmasi Hapus Transaksi"
+          subtitle="Tindakan ini akan menghapus data transaksi dari sistem dan rekap laporan"
+          maxWidth="md"
+        >
+          <div className="space-y-4 text-xs">
+            {/* Warning Alert Banner */}
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-900">
+              <div className="p-2 bg-rose-100 rounded-lg shrink-0 text-rose-700">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <strong className="block text-sm font-bold text-rose-950">
+                  Apakah Anda yakin ingin menghapus transaksi ini?
+                </strong>
+                <p className="text-[11px] text-rose-800 leading-relaxed">
+                  Transaksi dengan status <strong>"{requestToDelete.status}"</strong> ini akan dihapus dari histori rekapitulasi, pencatatan log audit, serta database.
+                </p>
+              </div>
+            </div>
+
+            {/* Transaction Summary Card */}
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-slate-800">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">No. Transaksi / Tiket</span>
+                  <strong className="text-sm font-mono text-slate-900">{requestToDelete.requestNumber}</strong>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status</span>
+                  <StatusBadge status={requestToDelete.status} size="sm" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
+                <div>
+                  <span className="text-slate-500 block">Layanan:</span>
+                  <strong className="text-slate-900 capitalize">{requestToDelete.serviceType.replace('_', ' ')}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Tanggal:</span>
+                  <span className="font-semibold text-slate-800">{new Date(requestToDelete.requestDate).toLocaleDateString('id-ID')}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Pemohon:</span>
+                  <strong className="text-slate-900">{requestToDelete.userName}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Unit:</span>
+                  <span className="font-semibold text-slate-800">{requestToDelete.unit}</span>
+                </div>
+              </div>
+
+              {requestToDelete.purpose && (
+                <div className="pt-2 border-t border-slate-200 text-[11px]">
+                  <span className="text-slate-500 block">Keperluan:</span>
+                  <span className="italic text-slate-700">"{requestToDelete.purpose}"</span>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setRequestToDelete(null);
+                }}
+                className="px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExecuteDelete}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Ya, Hapus Transaksi</span>
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
     </div>
   );

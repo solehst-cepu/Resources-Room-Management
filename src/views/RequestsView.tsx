@@ -17,7 +17,9 @@ import {
   Shirt,
   PenTool,
   Droplet,
-  Sparkles
+  Sparkles,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import { StatusBadge, UrgencyBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -56,12 +58,38 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
   const [isRejecting, setIsRejecting] = useState(false);
   const [rejectionReasonText, setRejectionReasonText] = useState('');
 
+  // Delete Confirmation Modal (for Admin & Super Admin)
+  const [requestToDelete, setRequestToDelete] = useState<ServiceRequest | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+  const canManageOrDelete = currentUser?.role === 'super_admin' || currentUser?.role === 'admin_rr';
+
   const handleOpenActionModal = (req: ServiceRequest) => {
     setSelectedActionRequest(req);
     setActionPickedUpBy(req.pickedUpBy || req.userName || '');
     setIsRejecting(false);
     setRejectionReasonText('');
     setIsActionModalOpen(true);
+  };
+
+  const handleOpenDeleteConfirm = (req: ServiceRequest) => {
+    setRequestToDelete(req);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleExecuteDelete = () => {
+    if (!requestToDelete) return;
+    deleteRequest(requestToDelete.id);
+    if (activeDetailRequest?.id === requestToDelete.id) {
+      setIsDetailModalOpen(false);
+      setActiveDetailRequest(null);
+    }
+    if (selectedActionRequest?.id === requestToDelete.id) {
+      setIsActionModalOpen(false);
+      setSelectedActionRequest(null);
+    }
+    setIsDeleteModalOpen(false);
+    setRequestToDelete(null);
   };
 
   // Filtered list
@@ -312,13 +340,24 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                         Slip
                       </button>
 
-                      {(currentUser?.role === 'super_admin' || currentUser?.role === 'admin_rr') && req.status !== 'Selesai' && (
+                      {canManageOrDelete && req.status !== 'Selesai' && req.status !== 'Ditolak' && (
                         <button
                           onClick={() => handleOpenActionModal(req)}
                           className="px-2.5 py-1 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors cursor-pointer"
                           title="Proses & Perbarui Status"
                         >
                           Proses
+                        </button>
+                      )}
+
+                      {canManageOrDelete && (
+                        <button
+                          onClick={() => handleOpenDeleteConfirm(req)}
+                          className="px-2 py-1 text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md transition-colors cursor-pointer inline-flex items-center gap-1"
+                          title="Hapus Transaksi (Admin & Super Admin)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          <span className="hidden xl:inline">Hapus</span>
                         </button>
                       )}
                     </td>
@@ -474,7 +513,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
             )}
 
             <div className="pt-3 border-t border-slate-200 flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   onClick={() => {
                     onOpenReceipt(activeDetailRequest);
@@ -486,7 +525,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                   <span>Cetak SPK / Tanda Terima</span>
                 </button>
 
-                {(currentUser?.role === 'super_admin' || currentUser?.role === 'admin_rr') && activeDetailRequest.status !== 'Selesai' && (
+                {canManageOrDelete && activeDetailRequest.status !== 'Selesai' && activeDetailRequest.status !== 'Ditolak' && (
                   <button
                     onClick={() => {
                       const reqToProcess = activeDetailRequest;
@@ -498,11 +537,25 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                     <span>Proses / Perbarui Status</span>
                   </button>
                 )}
+
+                {canManageOrDelete && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleOpenDeleteConfirm(activeDetailRequest);
+                    }}
+                    className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-bold rounded-lg flex items-center gap-1.5 cursor-pointer"
+                    title="Hapus transaksi ini dari sistem"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-600" />
+                    <span>Hapus Transaksi</span>
+                  </button>
+                )}
               </div>
 
               <button
                 onClick={() => setIsDetailModalOpen(false)}
-                className="px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 cursor-pointer"
+                className="px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 transition-colors"
               >
                 Tutup
               </button>
@@ -686,16 +739,126 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
               )}
             </div>
 
-            <div className="pt-3 border-t border-slate-100 flex justify-end">
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+              {canManageOrDelete ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = selectedActionRequest;
+                    setIsActionModalOpen(false);
+                    handleOpenDeleteConfirm(target);
+                  }}
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer"
+                  title="Hapus transaksi ini"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Hapus Transaksi</span>
+                </button>
+              ) : <div />}
+
               <button
                 type="button"
                 onClick={() => {
                   setIsActionModalOpen(false);
                   setSelectedActionRequest(null);
                 }}
-                className="px-4 py-1.5 border border-slate-300 rounded-lg font-semibold text-slate-700 cursor-pointer"
+                className="px-4 py-1.5 border border-slate-300 rounded-lg font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 transition-colors"
               >
                 Tutup
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL (ADMIN & SUPER ADMIN) */}
+      {requestToDelete && (
+        <Modal
+          isOpen={isDeleteModalOpen}
+          onClose={() => {
+            setIsDeleteModalOpen(false);
+            setRequestToDelete(null);
+          }}
+          title="Konfirmasi Hapus Transaksi"
+          subtitle="Tindakan ini akan menghapus data transaksi/permohonan secara permanen dari sistem"
+          maxWidth="md"
+        >
+          <div className="space-y-4 text-xs">
+            {/* Warning Alert Banner */}
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-900">
+              <div className="p-2 bg-rose-100 rounded-lg shrink-0 text-rose-700">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <strong className="block text-sm font-bold text-rose-950">
+                  Apakah Anda yakin ingin menghapus transaksi ini?
+                </strong>
+                <p className="text-[11px] text-rose-800 leading-relaxed">
+                  Transaksi dengan status <strong>"{requestToDelete.status}"</strong> ini akan dihapus dari histori permohonan, pencatatan log audit, serta rekap laporan Resources Room.
+                </p>
+              </div>
+            </div>
+
+            {/* Transaction Summary Card */}
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-slate-800">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">No. Transaksi / Tiket</span>
+                  <strong className="text-sm font-mono text-slate-900">{requestToDelete.requestNumber}</strong>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status Saat Ini</span>
+                  <StatusBadge status={requestToDelete.status} size="sm" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
+                <div>
+                  <span className="text-slate-500 block">Jenis Layanan:</span>
+                  <strong className="text-slate-900 capitalize">{requestToDelete.serviceType.replace('_', ' ')}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Tanggal Diajukan:</span>
+                  <span className="font-semibold text-slate-800">{new Date(requestToDelete.requestDate).toLocaleDateString('id-ID')}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Pemohon:</span>
+                  <strong className="text-slate-900">{requestToDelete.userName}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Unit Sekolah:</span>
+                  <span className="font-semibold text-slate-800">{requestToDelete.unit}</span>
+                </div>
+              </div>
+
+              {requestToDelete.purpose && (
+                <div className="pt-2 border-t border-slate-200 text-[11px]">
+                  <span className="text-slate-500 block">Keperluan / Keterangan:</span>
+                  <span className="italic text-slate-700">"{requestToDelete.purpose}"</span>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setRequestToDelete(null);
+                }}
+                className="px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExecuteDelete}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Ya, Hapus Transaksi</span>
               </button>
             </div>
           </div>

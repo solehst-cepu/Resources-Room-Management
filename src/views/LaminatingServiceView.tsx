@@ -22,21 +22,56 @@ import {
   CheckCircle2,
   BellRing,
   Send,
-  Scissors
+  Scissors,
+  Compass,
+  Trash2
 } from 'lucide-react';
 import { StatusBadge, UrgencyBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { UserSearchSelect } from '../components/common/UserSearchSelect';
+import { TrackOrderModal } from '../components/common/TrackOrderModal';
 
 interface LaminatingServiceViewProps {
   onOpenReceipt: (req: ServiceRequest) => void;
 }
 
 export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ onOpenReceipt }) => {
-  const { currentUser, users, units, requests, createRequest, updateRequestStatus } = useApp();
+  const { currentUser, users, units, requests, createRequest, updateRequestStatus, deleteRequest } = useApp();
 
   const [activeTab, setActiveTab] = useState<'permintaan' | 'antrean' | 'kalkulator' | 'panduan'>('permintaan');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Live Order Tracking State
+  const [trackingRequest, setTrackingRequest] = useState<ServiceRequest | null>(null);
+  const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
+  const [isOrderPickerOpen, setIsOrderPickerOpen] = useState(false);
+
+  // Delete transaction confirmation state
+  const [requestToDelete, setRequestToDelete] = useState<ServiceRequest | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+  const canManageOrDelete = currentUser?.role === 'super_admin' || currentUser?.role === 'admin_rr';
+
+  const handleOpenTracking = (req: ServiceRequest) => {
+    setTrackingRequest(req);
+    setIsTrackingModalOpen(true);
+  };
+
+  const handleOpenDeleteConfirm = (req: ServiceRequest) => {
+    setRequestToDelete(req);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleExecuteDelete = () => {
+    if (!requestToDelete) return;
+    deleteRequest(requestToDelete.id);
+    if (selectedRequest?.id === requestToDelete.id) {
+      setIsActionModalOpen(false);
+      setSelectedRequest(null);
+    }
+    setIsDeleteModalOpen(false);
+    setRequestToDelete(null);
+  };
 
   // Form State
   const [selectedUserId, setSelectedUserId] = useState<string>(currentUser?.id || (users[0]?.id ?? ''));
@@ -210,6 +245,24 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
     r.status === 'Sedang Disiapkan' || r.status === 'Disetujui' || r.status === 'Menunggu Approval' || r.status === 'Diajukan'
   ).length;
 
+  const myLaminatingRequests = laminatingRequests.filter(
+    r => (r.userId === currentUser?.id || r.userEmail === currentUser?.email)
+  );
+  const myActiveLaminatingCount = myLaminatingRequests.filter(
+    r => r.status !== 'Selesai' && r.status !== 'Ditolak'
+  ).length;
+
+  const handleQuickTrackMyOrder = () => {
+    const myActive = myLaminatingRequests.filter(
+      r => r.status !== 'Selesai' && r.status !== 'Ditolak'
+    );
+    if (myActive.length === 1) {
+      handleOpenTracking(myActive[0]);
+    } else {
+      setIsOrderPickerOpen(true);
+    }
+  };
+
   // Estimation logic
   const getEstimatedMinutes = (qty: number, size: string) => {
     const warmupTime = 4; // minutes
@@ -250,13 +303,30 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
           </div>
         </div>
 
-        <button
-          onClick={handleOpenModal}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Form Permintaan Laminating</span>
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            type="button"
+            onClick={handleQuickTrackMyOrder}
+            className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-bold rounded-xl shadow-2xs flex items-center gap-2 transition-colors cursor-pointer"
+            title="Lacak tahapan proses order laminating"
+          >
+            <Compass className="w-4 h-4 text-indigo-600 animate-spin-slow" />
+            <span>Lacak Order Saya</span>
+            {myActiveLaminatingCount > 0 && (
+              <span className="px-1.5 py-0.5 bg-indigo-600 text-white text-[10px] font-extrabold rounded-full">
+                {myActiveLaminatingCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={handleOpenModal}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Form Permintaan Laminating</span>
+          </button>
+        </div>
       </div>
 
       {/* Metrics Row */}
@@ -456,17 +526,38 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
                         </td>
                         <td className="p-3.5 text-right space-x-1.5 whitespace-nowrap">
                           <button
+                            type="button"
+                            onClick={() => handleOpenTracking(req)}
+                            className="px-2.5 py-1 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-md transition-colors cursor-pointer inline-flex items-center gap-1 shadow-2xs"
+                            title="Lacak Progres Pengerjaan Order Laminating"
+                          >
+                            <Compass className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>Lacak</span>
+                          </button>
+
+                          <button
                             onClick={() => onOpenReceipt(req)}
                             className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition-colors cursor-pointer"
                           >
                             SPK / Slip
                           </button>
-                          {(currentUser?.role === 'admin_rr' || currentUser?.role === 'super_admin' || currentUser?.role === 'manager') && (
+                          {(currentUser?.role === 'admin_rr' || currentUser?.role === 'super_admin' || currentUser?.role === 'manager') && req.status !== 'Selesai' && req.status !== 'Ditolak' && (
                             <button
                               onClick={() => handleOpenActionModal(req)}
                               className="px-2.5 py-1 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-md transition-colors cursor-pointer"
                             >
                               Proses Mesin
+                            </button>
+                          )}
+                          {canManageOrDelete && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDeleteConfirm(req)}
+                              className="px-2.5 py-1 text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md transition-colors cursor-pointer inline-flex items-center gap-1"
+                              title="Hapus Transaksi"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Hapus</span>
                             </button>
                           )}
                         </td>
@@ -513,14 +604,24 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
                       {req.laminatingDetail?.quantity} Lembar • Ukuran: {req.laminatingDetail?.paperSize}
                     </div>
                     
-                    {(currentUser?.role === 'admin_rr' || currentUser?.role === 'super_admin' || currentUser?.role === 'manager') && (
+                    <div className="flex gap-2 pt-1">
                       <button
-                        onClick={() => handleOpenActionModal(req)}
-                        className="w-full py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded text-xs font-semibold transition-colors cursor-pointer"
+                        type="button"
+                        onClick={() => handleOpenTracking(req)}
+                        className="flex-1 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
                       >
-                        Tinjau &amp; Setujui
+                        <Compass className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Lacak</span>
                       </button>
-                    )}
+                      {(currentUser?.role === 'admin_rr' || currentUser?.role === 'super_admin' || currentUser?.role === 'manager') && (
+                        <button
+                          onClick={() => handleOpenActionModal(req)}
+                          className="flex-1 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          Tinjau & Setujui
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               {laminatingRequests.filter(r => r.status === 'Menunggu Approval' || r.status === 'Diajukan').length === 0 && (
@@ -560,14 +661,24 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
                       Volume: <strong>{req.laminatingDetail?.quantity} Lembar {req.laminatingDetail?.paperSize}</strong>
                     </div>
 
-                    {(currentUser?.role === 'admin_rr' || currentUser?.role === 'super_admin' || currentUser?.role === 'manager') && (
+                    <div className="flex gap-2 pt-1">
                       <button
-                        onClick={() => handleOpenActionModal(req)}
-                        className="w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold transition-colors cursor-pointer"
+                        type="button"
+                        onClick={() => handleOpenTracking(req)}
+                        className="flex-1 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
                       >
-                        Perbarui Status Selesai
+                        <Compass className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Lacak</span>
                       </button>
-                    )}
+                      {(currentUser?.role === 'admin_rr' || currentUser?.role === 'super_admin' || currentUser?.role === 'manager') && (
+                        <button
+                          onClick={() => handleOpenActionModal(req)}
+                          className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          Perbarui Status
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               {laminatingRequests.filter(r => r.status === 'Sedang Disiapkan' || r.status === 'Disetujui').length === 0 && (
@@ -603,6 +714,14 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
                     </div>
                     
                     <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenTracking(req)}
+                        className="flex-1 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Compass className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Lacak</span>
+                      </button>
                       <button
                         onClick={() => onOpenReceipt(req)}
                         className="flex-1 py-1.5 border border-slate-300 text-slate-700 rounded text-xs font-semibold hover:bg-slate-50 cursor-pointer"
@@ -1262,6 +1381,140 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* TRACK ORDER MODAL */}
+      <TrackOrderModal
+        isOpen={isTrackingModalOpen}
+        onClose={() => {
+          setIsTrackingModalOpen(false);
+          setTrackingRequest(null);
+        }}
+        request={trackingRequest}
+        onOpenReceipt={onOpenReceipt}
+      />
+
+      {/* QUICK ORDER PICKER MODAL */}
+      {isOrderPickerOpen && (
+        <Modal
+          isOpen={isOrderPickerOpen}
+          onClose={() => setIsOrderPickerOpen(false)}
+          title="Pilih Order Laminating yang Ingin Dilacak"
+          subtitle="Pilih dari daftar permohonan aktif atau seluruh riwayat permohonan laminating Anda"
+          maxWidth="lg"
+        >
+          <div className="space-y-3 text-xs max-h-[70vh] overflow-y-auto p-1">
+            {laminatingRequests
+              .filter(r => (currentUser?.role === 'super_admin' || currentUser?.role === 'admin_rr') || (r.userId === currentUser?.id || r.userEmail === currentUser?.email))
+              .slice(0, 10)
+              .map((req) => (
+                <div
+                  key={req.id}
+                  onClick={() => {
+                    setIsOrderPickerOpen(false);
+                    handleOpenTracking(req);
+                  }}
+                  className="p-3 bg-white hover:bg-teal-50/70 border border-slate-200 hover:border-teal-300 rounded-xl transition-all cursor-pointer flex items-center justify-between gap-3 shadow-2xs group"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <strong className="font-mono text-xs text-slate-900 group-hover:text-teal-900">{req.requestNumber}</strong>
+                      <StatusBadge status={req.status} size="sm" />
+                      <UrgencyBadge urgency={req.urgency} />
+                    </div>
+                    <p className="text-xs font-semibold text-slate-800">
+                      {req.laminatingDetail?.documentType || req.purpose}
+                    </p>
+                    <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                      <span>{req.userName} ({req.unit})</span>
+                      <span>•</span>
+                      <span>{req.laminatingDetail?.quantity || 1} Lembar ({req.laminatingDetail?.paperSize || 'A4'})</span>
+                    </div>
+                  </div>
+
+                  <div className="px-3 py-1.5 bg-teal-600 group-hover:bg-teal-700 text-white rounded-lg font-bold text-xs shrink-0 flex items-center gap-1">
+                    <Compass className="w-3.5 h-3.5" />
+                    <span>Lacak</span>
+                  </div>
+                </div>
+              ))}
+
+            {laminatingRequests.filter(r => (currentUser?.role === 'super_admin' || currentUser?.role === 'admin_rr') || (r.userId === currentUser?.id || r.userEmail === currentUser?.email)).length === 0 && (
+              <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-xl">
+                <Sparkles className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                <p className="font-semibold text-slate-600">Belum ada order laminating yang diajukan.</p>
+                <p className="text-[11px] text-slate-400 mt-1">Gunakan tombol "Form Permintaan Laminating" untuk membuat order baru.</p>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL FOR ADMIN */}
+      {isDeleteModalOpen && requestToDelete && (
+        <Modal
+          isOpen={isDeleteModalOpen}
+          onClose={() => {
+            setIsDeleteModalOpen(false);
+            setRequestToDelete(null);
+          }}
+          title="Konfirmasi Hapus Transaksi Laminating"
+          subtitle="Tindakan ini hanya dapat dilakukan oleh Super Admin dan Admin RR"
+          maxWidth="md"
+        >
+          <div className="space-y-4 text-xs">
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3">
+              <div className="p-2 bg-rose-100 text-rose-700 rounded-lg shrink-0 mt-0.5">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="font-bold text-rose-900 text-sm">Apakah Anda yakin ingin menghapus data ini?</h4>
+                <p className="text-rose-700 text-xs leading-relaxed">
+                  Transaksi nomor <strong className="font-mono font-bold text-rose-950">{requestToDelete.requestNumber}</strong> akan dihapus secara permanen dari sistem Resources Room.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-mono font-bold text-slate-900 text-xs">{requestToDelete.requestNumber}</span>
+                <StatusBadge status={requestToDelete.status} size="sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <span className="text-slate-500 block">Pemohon:</span>
+                  <strong className="text-slate-900">{requestToDelete.userName}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Unit:</span>
+                  <span className="font-semibold text-slate-800">{requestToDelete.unit}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setRequestToDelete(null);
+                }}
+                className="px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExecuteDelete}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Ya, Hapus Transaksi</span>
+              </button>
             </div>
           </div>
         </Modal>

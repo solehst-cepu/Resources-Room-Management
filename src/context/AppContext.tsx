@@ -1066,9 +1066,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteRequest = (requestId: string) => {
     const req = requests.find(r => r.id === requestId);
     if (!req) return;
+    
     setRequests(prev => prev.filter(r => r.id !== requestId));
-    addAuditLog('Hapus Permintaan', req.serviceType.toUpperCase(), `Menghapus permintaan ${req.requestNumber}`);
-    showToast('success', 'Dihapus', `Permintaan ${req.requestNumber} berhasil dihapus`);
+    
+    // Sync deletion to Supabase cloud if connected
+    deleteFromTable('requests', 'id', requestId).catch(err => {
+      console.warn('Cloud delete request sync error:', err);
+    });
+
+    addAuditLog(
+      'Hapus Transaksi',
+      req.serviceType.toUpperCase(),
+      `Menghapus data transaksi/permohonan ${req.requestNumber} (Status: ${req.status}, Pemohon: ${req.userName}, Unit: ${req.unit})`
+    );
+    showToast('success', 'Transaksi Dihapus', `Transaksi ${req.requestNumber} berhasil dihapus dari sistem`);
   };
 
   // Master Items CRUD
