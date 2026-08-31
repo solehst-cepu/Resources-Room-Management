@@ -16,7 +16,9 @@ import {
   KeyRound,
   ExternalLink,
   ChevronRight,
-  LogIn
+  LogIn,
+  X,
+  UserCheck
 } from 'lucide-react';
 import { RoleBadge } from '../components/common/Badge';
 
@@ -228,9 +230,9 @@ export const LoginView: React.FC = () => {
                     <Sparkles className="w-3.5 h-3.5" />
                   </div>
                   <div>
-                    <strong className="font-bold block text-blue-950">Akses Cepat Tanpa Kata Sandi</strong>
+                    <strong className="font-bold block text-blue-950">Akses Cepat Single Sign-On (SSO)</strong>
                     <span className="text-blue-800 text-[11px]">
-                      Ketik email Google Sekolah Anda atau langsung klik nama Anda pada daftar master akun di bawah. Sistem akan mencocokkan data secara otomatis sehingga Anda langsung dapat mengisi form.
+                      Ketik email Google Sekolah Anda atau gunakan fitur pencarian akun di bawah untuk masuk secara instan tanpa perlu kata sandi.
                     </span>
                   </div>
                 </div>
@@ -285,82 +287,105 @@ export const LoginView: React.FC = () => {
                   </div>
                 </form>
 
-                {/* Quick Picker: Registered Google Accounts List */}
-                <div className="pt-3 border-t border-slate-100">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                        Atau Pilih Akun Terdaftar di Master Data:
+                {/* Account Search / Quick Finder (List hidden by default, visible upon searching) */}
+                <div className="pt-3.5 border-t border-slate-100 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                      <Search className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Pencarian Akun Terdaftar:</span>
+                    </label>
+                    {googleSearchQuery && (
+                      <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                        {registeredGoogleUsers.length} akun ditemukan
                       </span>
-                      <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
-                        {registeredGoogleUsers.length} Pengguna
-                      </span>
-                    </div>
-
-                    {/* Search inside registered list */}
-                    <div className="relative w-full sm:w-48">
-                      <Search className="w-3 h-3 absolute left-2.5 top-2 text-slate-400" />
-                      <input
-                        type="text"
-                        value={googleSearchQuery}
-                        onChange={(e) => setGoogleSearchQuery(e.target.value)}
-                        placeholder="Cari nama / unit..."
-                        className="w-full pl-7 pr-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Scrollable list of accounts */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
-                    {registeredGoogleUsers.length === 0 ? (
-                      <div className="col-span-2 p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                        Tidak ada akun cocok dengan kata kunci "{googleSearchQuery}"
-                      </div>
-                    ) : (
-                      registeredGoogleUsers.map((u) => (
-                        <button
-                          key={u.id}
-                          type="button"
-                          onClick={() => handleSelectAccount(u.email)}
-                          className="p-2.5 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 bg-white transition-all text-left group cursor-pointer flex items-center justify-between gap-2 shadow-xs"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            {u.avatar ? (
-                              <img
-                                src={u.avatar}
-                                alt={u.name}
-                                className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0"
-                              />
-                            ) : (
-                              <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs shrink-0">
-                                {u.name.charAt(0)}
-                              </div>
-                            )}
-                            <div className="min-w-0">
-                              <strong className="text-xs text-slate-900 block truncate group-hover:text-blue-700 font-semibold">
-                                {u.name}
-                              </strong>
-                              <p className="text-[10px] text-slate-500 truncate font-mono">
-                                {u.email}
-                              </p>
-                              <div className="flex items-center gap-1.5 mt-0.5 text-[9px] text-slate-500">
-                                <span className="font-semibold text-slate-600">{u.unit}</span>
-                                <span>•</span>
-                                <span className="truncate">{u.department}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="shrink-0 flex flex-col items-end gap-1">
-                            <RoleBadge role={u.role} />
-                            <span className="text-[10px] font-bold text-blue-600 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                              Masuk <ChevronRight className="w-3 h-3" />
-                            </span>
-                          </div>
-                        </button>
-                      ))
                     )}
                   </div>
+
+                  {/* Search input field */}
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                    <input
+                      type="text"
+                      value={googleSearchQuery}
+                      onChange={(e) => setGoogleSearchQuery(e.target.value)}
+                      placeholder="Ketik nama, email, atau unit untuk mencari akun Anda..."
+                      className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                    />
+                    {googleSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setGoogleSearchQuery('')}
+                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200 transition-colors"
+                        title="Hapus pencarian"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Dynamic Search Results: only shown when user searches */}
+                  {googleSearchQuery.trim() ? (
+                    <div className="space-y-2 pt-1">
+                      {registeredGoogleUsers.length === 0 ? (
+                        <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                          <p className="font-semibold text-slate-700">Tidak ada akun yang sesuai</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Tidak ditemukan akun dengan kata kunci "{googleSearchQuery}". Pastikan nama atau email terdaftar di Master Pengguna.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                          {registeredGoogleUsers.map((u) => (
+                            <button
+                              key={u.id}
+                              type="button"
+                              onClick={() => handleSelectAccount(u.email)}
+                              className="p-2.5 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/60 bg-white transition-all text-left group cursor-pointer flex items-center justify-between gap-2 shadow-xs"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                {u.avatar ? (
+                                  <img
+                                    src={u.avatar}
+                                    alt={u.name}
+                                    className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs shrink-0">
+                                    {u.name.charAt(0)}
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <strong className="text-xs text-slate-900 block truncate group-hover:text-blue-700 font-semibold">
+                                    {u.name}
+                                  </strong>
+                                  <p className="text-[10px] text-slate-500 truncate font-mono">
+                                    {u.email}
+                                  </p>
+                                  <div className="flex items-center gap-1.5 mt-0.5 text-[9px] text-slate-500">
+                                    <span className="font-semibold text-slate-600">{u.unit}</span>
+                                    <span>•</span>
+                                    <span className="truncate">{u.department}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="shrink-0 flex flex-col items-end gap-1">
+                                <RoleBadge role={u.role} />
+                                <span className="text-[10px] font-bold text-blue-600 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+                                  Masuk <ChevronRight className="w-3 h-3" />
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-slate-50/70 border border-slate-200/80 rounded-xl text-center flex items-center justify-center gap-2 text-slate-500 text-[11px]">
+                      <Search className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Ketik nama, email, atau unit di atas untuk mencari dan memilih akun dengan cepat.</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

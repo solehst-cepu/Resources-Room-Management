@@ -13,7 +13,8 @@ import {
   ChevronDown,
   ExternalLink,
   Shield,
-  Layers
+  Layers,
+  Database
 } from 'lucide-react';
 import { RoleBadge } from '../common/Badge';
 
@@ -38,6 +39,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     notifications, 
     markNotificationAsRead, 
     markAllNotificationsAsRead,
+    supabaseStatus,
     resetAllData 
   } = useApp();
 
@@ -90,6 +92,29 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Right Actions */}
         <div className="flex items-center gap-2 sm:gap-3">
           
+          {/* Cloud Database Supabase Quick Status Indicator */}
+          <button
+            onClick={() => onNavigate('settings')}
+            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+              supabaseStatus === 'connected'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                : supabaseStatus === 'connecting'
+                ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                : 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'
+            }`}
+            title="Status Database Supabase - Klik untuk konfigurasi"
+          >
+            <Database className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="hidden lg:inline">Supabase</span>
+            <span className={`w-2 h-2 rounded-full ${
+              supabaseStatus === 'connected'
+                ? 'bg-emerald-500'
+                : supabaseStatus === 'connecting'
+                ? 'bg-amber-500 animate-ping'
+                : 'bg-rose-500'
+            }`} />
+          </button>
+
           {/* Quick User Switcher Demo Badge */}
           <div className="relative">
             <button

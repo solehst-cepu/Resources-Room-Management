@@ -2,15 +2,15 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
   User, 
   UserRole, 
-  RoleConfig,
-  RolePermissions,
+  RoleConfig, 
+  RolePermissions, 
   MasterItem, 
   UniformItem, 
   WaterLocation, 
   WaterInventory, 
-  WaterProviderLog,
-  WaterOpnameRecord,
-  WaterDetail,
+  WaterProviderLog, 
+  WaterOpnameRecord, 
+  WaterDetail, 
   ServiceRequest, 
   StockTransaction, 
   AuditLog, 
@@ -18,19 +18,19 @@ import {
   MasterUnit, 
   MasterDepartment, 
   MasterSupplier, 
-  MasterLocation,
-  ServiceType,
-  RequestStatus
+  MasterLocation, 
+  ServiceType, 
+  RequestStatus 
 } from '../types';
 import { 
   INITIAL_USERS, 
-  INITIAL_ROLES,
+  INITIAL_ROLES, 
   INITIAL_ITEMS, 
   INITIAL_UNIFORMS, 
   INITIAL_WATER_LOCATIONS, 
   INITIAL_WATER_INVENTORY, 
-  INITIAL_WATER_PROVIDER_LOGS,
-  INITIAL_WATER_OPNAME_RECORDS,
+  INITIAL_WATER_PROVIDER_LOGS, 
+  INITIAL_WATER_OPNAME_RECORDS, 
   INITIAL_REQUESTS, 
   INITIAL_STOCK_TRANSACTIONS, 
   INITIAL_AUDIT_LOGS, 
@@ -40,6 +40,46 @@ import {
   INITIAL_SUPPLIERS, 
   INITIAL_LOCATIONS 
 } from '../data/initialData';
+import { 
+  supabase, 
+  PROJECT_METADATA 
+} from '../lib/supabase';
+import {
+  checkSupabaseHealth,
+  DatabaseStatusInfo,
+  syncAllInitialDataToSupabase,
+  fetchAllFromTable,
+  upsertToTable,
+  deleteFromTable,
+  transformUserToDB,
+  transformUserFromDB,
+  transformItemToDB,
+  transformItemFromDB,
+  transformUniformToDB,
+  transformUniformFromDB,
+  transformWaterLocationToDB,
+  transformWaterLocationFromDB,
+  transformWaterInventoryToDB,
+  transformWaterInventoryFromDB,
+  transformRequestToDB,
+  transformRequestFromDB,
+  transformStockTransactionToDB,
+  transformStockTransactionFromDB,
+  transformAuditLogToDB,
+  transformAuditLogFromDB,
+  transformNotificationToDB,
+  transformNotificationFromDB,
+  transformUnitToDB,
+  transformUnitFromDB,
+  transformDeptToDB,
+  transformDeptFromDB,
+  transformSupplierToDB,
+  transformSupplierFromDB,
+  transformLocationToDB,
+  transformLocationFromDB,
+  transformRoleConfigToDB,
+  transformRoleConfigFromDB
+} from '../services/supabaseService';
 
 interface ToastInfo {
   id: string;
@@ -47,6 +87,8 @@ interface ToastInfo {
   title: string;
   message?: string;
 }
+
+export type SupabaseConnectionStatus = 'connected' | 'connecting' | 'error' | 'local_fallback';
 
 interface AppContextType {
   currentUser: User | null;
@@ -67,6 +109,13 @@ interface AppContextType {
   suppliers: MasterSupplier[];
   locations: MasterLocation[];
   toasts: ToastInfo[];
+
+  // Supabase Status & Cloud Sync
+  supabaseStatus: SupabaseConnectionStatus;
+  dbInfo: DatabaseStatusInfo | null;
+  isSyncingToSupabase: boolean;
+  syncAllToSupabase: () => Promise<{ success: boolean; message: string; details: Record<string, number> }>;
+  refreshSupabaseConnection: () => Promise<void>;
   
   // Auth & User Switch
   login: (emailOrUsername: string, roleOrPassword?: string) => boolean;
@@ -269,6 +318,168 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [toasts, setToasts] = useState<ToastInfo[]>([]);
+
+  // Supabase State
+  const [supabaseStatus, setSupabaseStatus] = useState<SupabaseConnectionStatus>('connecting');
+  const [dbInfo, setDbInfo] = useState<DatabaseStatusInfo | null>(null);
+  const [isSyncingToSupabase, setIsSyncingToSupabase] = useState(false);
+
+  // Check Supabase Health & Auto-load data if available
+  const refreshSupabaseConnection = async () => {
+    try {
+      setSupabaseStatus('connecting');
+      const health = await checkSupabaseHealth();
+      setDbInfo(health);
+
+      if (!health.isConfigured) {
+        setSupabaseStatus('local_fallback');
+        return;
+      }
+
+      if (!health.connected) {
+        setSupabaseStatus('error');
+        return;
+      }
+
+      setSupabaseStatus('connected');
+
+      // If tables exist in Supabase, load remote records
+      if (health.hasTables) {
+        try {
+          const [
+            remoteUsers,
+            remoteItems,
+            remoteUniforms,
+            remoteWaterLocs,
+            remoteWaterInv,
+            remoteWaterLogs,
+            remoteWaterOpname,
+            remoteRequests,
+            remoteTrx,
+            remoteUnits,
+            remoteDepts,
+            remoteSuppliers,
+            remoteLocations,
+            remoteRoles
+          ] = await Promise.all([
+            fetchAllFromTable<any>('users', transformUserFromDB),
+            fetchAllFromTable<any>('master_items', transformItemFromDB),
+            fetchAllFromTable<any>('uniform_items', transformUniformFromDB),
+            fetchAllFromTable<any>('water_locations', transformWaterLocationFromDB),
+            fetchAllFromTable<any>('water_inventory', transformWaterInventoryFromDB),
+            fetchAllFromTable<any>('water_provider_logs'),
+            fetchAllFromTable<any>('water_opname_records'),
+            fetchAllFromTable<any>('service_requests', transformRequestFromDB),
+            fetchAllFromTable<any>('stock_transactions', transformStockTransactionFromDB),
+            fetchAllFromTable<any>('master_units', transformUnitFromDB),
+            fetchAllFromTable<any>('master_departments', transformDeptFromDB),
+            fetchAllFromTable<any>('master_suppliers', transformSupplierFromDB),
+            fetchAllFromTable<any>('master_locations', transformLocationFromDB),
+            fetchAllFromTable<any>('role_configs', transformRoleConfigFromDB)
+          ]);
+
+          if (remoteUsers && remoteUsers.length > 0) setUsers(remoteUsers);
+          if (remoteItems && remoteItems.length > 0) setItems(remoteItems);
+          if (remoteUniforms && remoteUniforms.length > 0) setUniforms(remoteUniforms);
+          if (remoteWaterLocs && remoteWaterLocs.length > 0) setWaterLocations(remoteWaterLocs);
+          if (remoteWaterInv && remoteWaterInv.length > 0) setWaterInventory(remoteWaterInv[0]);
+          if (remoteWaterLogs && remoteWaterLogs.length > 0) setWaterProviderLogs(remoteWaterLogs);
+          if (remoteWaterOpname && remoteWaterOpname.length > 0) setWaterOpnameRecords(remoteWaterOpname);
+          if (remoteRequests && remoteRequests.length > 0) setRequests(remoteRequests);
+          if (remoteTrx && remoteTrx.length > 0) setStockTransactions(remoteTrx);
+          if (remoteUnits && remoteUnits.length > 0) setUnits(remoteUnits);
+          if (remoteDepts && remoteDepts.length > 0) setDepartments(remoteDepts);
+          if (remoteSuppliers && remoteSuppliers.length > 0) setSuppliers(remoteSuppliers);
+          if (remoteLocations && remoteLocations.length > 0) setLocations(remoteLocations);
+          if (remoteRoles && remoteRoles.length > 0) setRoleConfigs(remoteRoles);
+        } catch (err) {
+          console.warn('[Supabase] Non-blocking initial fetch error:', err);
+        }
+      }
+    } catch (err) {
+      console.warn('[Supabase] Health check error:', err);
+      setSupabaseStatus('error');
+    }
+  };
+
+  useEffect(() => {
+    refreshSupabaseConnection();
+  }, []);
+
+  // Supabase Real-time listener for Service Requests
+  useEffect(() => {
+    if (!supabase || supabaseStatus !== 'connected') return;
+
+    try {
+      const channel = supabase
+        .channel('public:service_requests_realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'service_requests' },
+          (payload) => {
+            if (payload.eventType === 'INSERT' && payload.new) {
+              const newReq = transformRequestFromDB(payload.new);
+              setRequests(prev => {
+                if (prev.some(r => r.id === newReq.id)) return prev;
+                return [newReq, ...prev];
+              });
+            } else if (payload.eventType === 'UPDATE' && payload.new) {
+              const updatedReq = transformRequestFromDB(payload.new);
+              setRequests(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
+            } else if (payload.eventType === 'DELETE' && payload.old) {
+              const oldId = payload.old.id;
+              setRequests(prev => prev.filter(r => r.id !== oldId));
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    } catch (e) {
+      console.warn('[Supabase] Realtime subscription error:', e);
+    }
+  }, [supabaseStatus]);
+
+  // One-click Sync All Data to Supabase
+  const syncAllToSupabase = async (): Promise<{ success: boolean; message: string; details: Record<string, number> }> => {
+    setIsSyncingToSupabase(true);
+    try {
+      const result = await syncAllInitialDataToSupabase({
+        users,
+        items,
+        uniforms,
+        waterLocations,
+        waterInventory,
+        waterProviderLogs,
+        waterOpnameRecords,
+        requests,
+        stockTransactions,
+        auditLogs,
+        notifications,
+        units,
+        departments,
+        suppliers,
+        locations,
+        roleConfigs
+      });
+
+      if (result.success) {
+        showToast('success', 'Sinkronisasi Supabase Berhasil!', result.message);
+        await refreshSupabaseConnection();
+      } else {
+        showToast('warning', 'Peringatan Sinkronisasi', result.message);
+      }
+      return result;
+    } catch (error: any) {
+      const errMsg = error?.message || 'Gagal sinkronisasi data ke Supabase';
+      showToast('error', 'Sinkronisasi Gagal', errMsg);
+      return { success: false, message: errMsg, details: {} };
+    } finally {
+      setIsSyncingToSupabase(false);
+    }
+  };
 
   // Sync to LocalStorage
   useEffect(() => {
@@ -1526,6 +1737,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       suppliers,
       locations,
       toasts,
+      supabaseStatus,
+      dbInfo,
+      isSyncingToSupabase,
+      syncAllToSupabase,
+      refreshSupabaseConnection,
       login,
       loginWithGoogleEmail,
       logout,

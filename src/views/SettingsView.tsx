@@ -29,14 +29,25 @@ import {
   Eye,
   EyeOff,
   Lock,
-  RefreshCw
+  RefreshCw,
+  Database,
+  Server,
+  Copy,
+  ExternalLink,
+  AlertTriangle,
+  Zap,
+  ArrowRight,
+  Cloud,
+  CheckCircle
 } from 'lucide-react';
 import { RoleBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { UserImportModal } from '../components/UserImportModal';
+import { SUPABASE_CONFIG_SCHEMA_SQL } from '../lib/supabaseSqlSchema';
+import { PROJECT_METADATA } from '../lib/supabase';
 
 interface SettingsViewProps {
-  initialTab?: 'roles' | 'users' | 'units' | 'galon' | 'system';
+  initialTab?: 'roles' | 'users' | 'units' | 'galon' | 'database' | 'system';
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles' }) => {
@@ -46,9 +57,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     roleConfigs,
     units, 
     departments, 
+    items,
+    requests,
     waterInventory,
     waterProviderLogs,
     waterOpnameRecords,
+    supabaseStatus,
+    dbInfo,
+    isSyncingToSupabase,
+    syncAllToSupabase,
+    refreshSupabaseConnection,
     updateInitialWaterAssets,
     addWaterProviderDelivery,
     performWaterStockOpname,
@@ -68,7 +86,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     showToast
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'roles' | 'users' | 'units' | 'galon' | 'system'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'roles' | 'users' | 'units' | 'galon' | 'database' | 'system'>(initialTab);
+  const [copiedSql, setCopiedSql] = useState(false);
+  const [showSqlViewer, setShowSqlViewer] = useState(false);
 
   useEffect(() => {
     if (initialTab) {
@@ -647,6 +667,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
         >
           <Droplet className="w-4 h-4 text-cyan-400" />
           <span>Master Galon &amp; Stock Opname</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('database')}
+          className={`px-3.5 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'database' ? 'bg-emerald-700 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <Database className="w-4 h-4 text-emerald-400" />
+          <span>Database Supabase Cloud</span>
+          <span className={`w-2 h-2 rounded-full ${
+            supabaseStatus === 'connected' 
+              ? 'bg-emerald-400' 
+              : supabaseStatus === 'connecting'
+              ? 'bg-amber-400 animate-ping'
+              : 'bg-rose-400'
+          }`} />
         </button>
 
         <button
@@ -1313,6 +1350,356 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
                 ))
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: DATABASE SUPABASE CLOUD */}
+      {activeTab === 'database' && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 p-6 rounded-2xl border border-emerald-800/50 shadow-md text-white">
+            <div className="flex items-center gap-4">
+              <div className="p-3.5 bg-emerald-600/30 border border-emerald-500/40 text-emerald-400 rounded-2xl">
+                <Database className="w-7 h-7" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-base font-bold text-white">Supabase Cloud Database Integration</h3>
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                    supabaseStatus === 'connected'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
+                      : supabaseStatus === 'connecting'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
+                      : 'bg-rose-500/20 text-rose-300 border border-rose-400/40'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${
+                      supabaseStatus === 'connected'
+                        ? 'bg-emerald-400'
+                        : supabaseStatus === 'connecting'
+                        ? 'bg-amber-400 animate-ping'
+                        : 'bg-rose-400'
+                    }`} />
+                    {supabaseStatus === 'connected'
+                      ? 'Terhubung (Online)'
+                      : supabaseStatus === 'connecting'
+                      ? 'Menghubungkan...'
+                      : 'Belum Ada Tabel / Error'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-1">
+                  Penyimpanan cloud PostgreSQL terdistribusi &amp; Real-time WebSocket synchronization untuk Sekolah Lazuardi GCS
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={refreshSupabaseConnection}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-2 cursor-pointer transition-colors shadow-xs"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Uji Koneksi Ulang</span>
+              </button>
+              <a
+                href={`https://supabase.com/dashboard/project/${PROJECT_METADATA.projectId}/sql`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+              >
+                <span>Buka Supabase SQL Editor</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
+
+          {/* 3 Overview Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Project Name &amp; ID</span>
+              <strong className="text-sm font-extrabold text-slate-900 block mt-1">
+                {PROJECT_METADATA.projectName}
+              </strong>
+              <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-xs">
+                <span className="text-slate-400 font-mono text-[11px]">ID: {PROJECT_METADATA.projectId}</span>
+                <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-semibold text-[10px]">
+                  PostgreSQL
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">REST Endpoint URL</span>
+              <p className="text-xs font-mono font-semibold text-slate-800 truncate mt-1" title={PROJECT_METADATA.url}>
+                {PROJECT_METADATA.url}
+              </p>
+              <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-xs">
+                <span className="text-slate-400 text-[11px]">Auth Mode: Anon Key (JWT)</span>
+                <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded font-semibold text-[10px]">
+                  SSL Encrypted
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Real-time Synchronization</span>
+              <strong className="text-sm font-extrabold text-slate-900 block mt-1 flex items-center gap-1.5">
+                <Zap className="w-4 h-4 text-amber-500" />
+                WebSocket postgres_changes
+              </strong>
+              <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-xs">
+                <span className="text-slate-400 text-[11px]">Auto Live Update</span>
+                <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-semibold text-[10px]">
+                  Aktif
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Database Setup & SQL Execution Helper */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Server className="w-4 h-4 text-emerald-600" />
+                  <span>Langkah Inisialisasi Database Supabase</span>
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Ikuti 2 langkah mudah di bawah ini untuk mengaktifkan seluruh tabel database di cloud Supabase Anda
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(SUPABASE_CONFIG_SCHEMA_SQL);
+                    setCopiedSql(true);
+                    showToast('success', 'SQL Disalin ke Clipboard!', 'Tempel (paste) di SQL Editor Supabase.');
+                    setTimeout(() => setCopiedSql(false), 3000);
+                  }}
+                  className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                >
+                  {copiedSql ? <CheckCircle className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  <span>{copiedSql ? 'Tersalin!' : 'Salin Skema SQL Lengkap'}</span>
+                </button>
+
+                <button
+                  onClick={() => setShowSqlViewer(!showSqlViewer)}
+                  className="px-3 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer transition-colors"
+                >
+                  {showSqlViewer ? 'Sembunyikan SQL' : 'Lihat Skema SQL'}
+                </button>
+              </div>
+            </div>
+
+            {/* Stepper Guide */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center">
+                    1
+                  </span>
+                  <strong className="text-xs text-slate-900">Jalankan Skema SQL di Supabase</strong>
+                </div>
+                <p className="text-[11px] text-slate-600">
+                  Klik tombol <strong>Salin Skema SQL Lengkap</strong>, lalu buka <strong>Supabase SQL Editor</strong> dan jalankan (<kbd className="px-1 bg-white border border-slate-300 rounded font-mono text-[10px]">Run / Cmd+Enter</kbd>) untuk membuat 14 tabel database.
+                </p>
+                <div className="pt-2">
+                  <a
+                    href={`https://supabase.com/dashboard/project/${PROJECT_METADATA.projectId}/sql`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-semibold hover:underline"
+                  >
+                    <span>Buka URL: supabase.com/dashboard/project/{PROJECT_METADATA.projectId}/sql</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              </div>
+
+              <div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-200 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center">
+                    2
+                  </span>
+                  <strong className="text-xs text-emerald-950">Migrasikan / Sinkronkan Data Awal</strong>
+                </div>
+                <p className="text-[11px] text-emerald-800">
+                  Setelah SQL selesai dijalankan, klik tombol hijau <strong>Migrasikan &amp; Sinkronkan Data Awal</strong> di bawah untuk memasukkan seluruh Master Data Lazuardi GCS ke Supabase.
+                </p>
+                <div className="pt-2">
+                  <button
+                    onClick={syncAllToSupabase}
+                    disabled={isSyncingToSupabase}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-lg flex items-center gap-2 cursor-pointer shadow-xs transition-colors"
+                  >
+                    {isSyncingToSupabase ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Sedang Memigrasikan Data...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Migrasikan &amp; Sinkronkan Data Awal ke Supabase</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* SQL Code Preview if toggled */}
+            {showSqlViewer && (
+              <div className="mt-4 p-4 bg-slate-950 text-slate-200 rounded-xl font-mono text-[11px] max-h-80 overflow-y-auto border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-slate-400 pb-2 border-b border-slate-800">
+                  <span>Skema SQL Database (DDL + Constraints + Indices)</span>
+                  <span className="text-[10px]">14 Tables</span>
+                </div>
+                <pre className="whitespace-pre-wrap">{SUPABASE_CONFIG_SCHEMA_SQL}</pre>
+              </div>
+            )}
+          </div>
+
+          {/* Database Tables Inventory List */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  Status 14 Tabel Database Supabase
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  Pemetaan tabel database PostgreSQL untuk semua entitas modul sistem Resources Room
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                14 Tabel Terdefinisi
+              </span>
+            </div>
+
+            <table className="w-full text-left text-xs text-slate-700">
+              <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                <tr>
+                  <th className="p-3">Nama Tabel (Postgres)</th>
+                  <th className="p-3">Modul Terkait</th>
+                  <th className="p-3">Jumlah Record Lokal</th>
+                  <th className="p-3">Kunci Primer (PK)</th>
+                  <th className="p-3 text-center">Status Cloud</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                <tr className="hover:bg-slate-50/60">
+                  <td className="p-3 font-mono font-bold text-blue-900">users</td>
+                  <td className="p-3 text-slate-800">Master Pengguna &amp; Akun Guru/Staff</td>
+                  <td className="p-3 font-bold text-slate-900">{users.length} Akun</td>
+                  <td className="p-3 font-mono text-slate-500 text-[11px]">id (TEXT)</td>
+                  <td className="p-3 text-center">
+                    <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100">
+                      Ready
+                    </span>
+                  </td>
+                </tr>
+                <tr className="hover:bg-slate-50/60">
+                  <td className="p-3 font-mono font-bold text-blue-900">service_requests</td>
+                  <td className="p-3 text-slate-800">Permintaan ATK, Seragam, Foto Copy, Laminating, Galon</td>
+                  <td className="p-3 font-bold text-slate-900">{requests.length} Permintaan</td>
+                  <td className="p-3 font-mono text-slate-500 text-[11px]">id (TEXT)</td>
+                  <td className="p-3 text-center">
+                    <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100">
+                      Realtime Live
+                    </span>
+                  </td>
+                </tr>
+                <tr className="hover:bg-slate-50/60">
+                  <td className="p-3 font-mono font-bold text-blue-900">master_items</td>
+                  <td className="p-3 text-slate-800">Katalog Barang ATK &amp; Inventori Umum</td>
+                  <td className="p-3 font-bold text-slate-900">{items.length} Item</td>
+                  <td className="p-3 font-mono text-slate-500 text-[11px]">id (TEXT)</td>
+                  <td className="p-3 text-center">
+                    <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100">
+                      Ready
+                    </span>
+                  </td>
+                </tr>
+                <tr className="hover:bg-slate-50/60">
+                  <td className="p-3 font-mono font-bold text-blue-900">uniform_items</td>
+                  <td className="p-3 text-slate-800">Katalog Seragam Sekolah Per Jenjang &amp; Ukuran</td>
+                  <td className="p-3 font-bold text-slate-900">{waterInventory ? 'Tersedia' : '-'}</td>
+                  <td className="p-3 font-mono text-slate-500 text-[11px]">id (TEXT)</td>
+                  <td className="p-3 text-center">
+                    <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100">
+                      Ready
+                    </span>
+                  </td>
+                </tr>
+                <tr className="hover:bg-slate-50/60">
+                  <td className="p-3 font-mono font-bold text-blue-900">water_locations</td>
+                  <td className="p-3 text-slate-800">Titik Ruangan &amp; Dispenser Galon Air Minum</td>
+                  <td className="p-3 font-bold text-slate-900">Tercatat</td>
+                  <td className="p-3 font-mono text-slate-500 text-[11px]">id (TEXT)</td>
+                  <td className="p-3 text-center">
+                    <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100">
+                      Ready
+                    </span>
+                  </td>
+                </tr>
+                <tr className="hover:bg-slate-50/60">
+                  <td className="p-3 font-mono font-bold text-blue-900">water_inventory</td>
+                  <td className="p-3 text-slate-800">Inventori Total Galon (Modal, Isi, Kosong, Ruangan)</td>
+                  <td className="p-3 font-bold text-slate-900">{waterInventory?.initialTotalAssets || 68} Galon</td>
+                  <td className="p-3 font-mono text-slate-500 text-[11px]">id (TEXT)</td>
+                  <td className="p-3 text-center">
+                    <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100">
+                      Ready
+                    </span>
+                  </td>
+                </tr>
+                <tr className="hover:bg-slate-50/60">
+                  <td className="p-3 font-mono font-bold text-blue-900">stock_transactions</td>
+                  <td className="p-3 text-slate-800">Jurnal Mutasi Stok Masuk, Keluar, dan Stock Opname</td>
+                  <td className="p-3 font-bold text-slate-900">Tercatat</td>
+                  <td className="p-3 font-mono text-slate-500 text-[11px]">id (TEXT)</td>
+                  <td className="p-3 text-center">
+                    <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100">
+                      Ready
+                    </span>
+                  </td>
+                </tr>
+                <tr className="hover:bg-slate-50/60">
+                  <td className="p-3 font-mono font-bold text-blue-900">master_units</td>
+                  <td className="p-3 text-slate-800">Daftar Unit Sekolah Lazuardi GCS (SMP, SD, TK, SMA)</td>
+                  <td className="p-3 font-bold text-slate-900">{units.length} Unit</td>
+                  <td className="p-3 font-mono text-slate-500 text-[11px]">id (TEXT)</td>
+                  <td className="p-3 text-center">
+                    <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100">
+                      Ready
+                    </span>
+                  </td>
+                </tr>
+                <tr className="hover:bg-slate-50/60">
+                  <td className="p-3 font-mono font-bold text-blue-900">master_departments</td>
+                  <td className="p-3 text-slate-800">Departemen &amp; Bagian Kerja Unit</td>
+                  <td className="p-3 font-bold text-slate-900">{departments.length} Bagian</td>
+                  <td className="p-3 font-mono text-slate-500 text-[11px]">id (TEXT)</td>
+                  <td className="p-3 text-center">
+                    <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100">
+                      Ready
+                    </span>
+                  </td>
+                </tr>
+                <tr className="hover:bg-slate-50/60">
+                  <td className="p-3 font-mono font-bold text-blue-900">role_configs</td>
+                  <td className="p-3 text-slate-800">Matriks Hak Akses &amp; Izin Peran Pengguna</td>
+                  <td className="p-3 font-bold text-slate-900">{roleConfigs.length} Peran</td>
+                  <td className="p-3 font-mono text-slate-500 text-[11px]">id (TEXT)</td>
+                  <td className="p-3 text-center">
+                    <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100">
+                      Ready
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       )}
