@@ -97,13 +97,22 @@ export interface UniformItem {
 
 export interface WaterLocation {
   id: string;
+  code?: string;
   unit: string;
+  unitId?: string;
+  department?: string;
+  departmentId?: string;
   roomName: string;
+  building?: string;
   floor: string;
   dispenserCount: number;
+  dispenserBrand?: string;
   activeGallons: number;
   emptyGallons: number;
+  picName?: string;
+  status?: 'Aktif' | 'Nonaktif' | 'Perbaikan Dispenser';
   lastRefillDate?: string;
+  notes?: string;
 }
 
 export interface WaterInventory {

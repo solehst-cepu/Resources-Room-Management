@@ -122,23 +122,41 @@ export const transformUniformFromDB = (row: any): UniformItem => ({
 
 export const transformWaterLocationToDB = (w: WaterLocation) => ({
   id: w.id,
+  code: w.code || '',
   unit: w.unit,
+  unit_id: w.unitId || '',
+  department: w.department || '',
+  department_id: w.departmentId || '',
   room_name: w.roomName,
+  building: w.building || '',
   floor: w.floor || '',
   dispenser_count: Number(w.dispenserCount || 1),
+  dispenser_brand: w.dispenserBrand || '',
   active_gallons: Number(w.activeGallons || 1),
   empty_gallons: Number(w.emptyGallons || 0),
+  pic_name: w.picName || '',
+  status: w.status || 'Aktif',
+  notes: w.notes || '',
   last_refill_date: w.lastRefillDate || null,
 });
 
 export const transformWaterLocationFromDB = (row: any): WaterLocation => ({
   id: row.id,
+  code: row.code || `TG-${(row.unit || 'LOC').toUpperCase()}-${String(row.id || '').slice(-2)}`,
   unit: row.unit,
+  unitId: row.unit_id || undefined,
+  department: row.department || undefined,
+  departmentId: row.department_id || undefined,
   roomName: row.room_name,
+  building: row.building || undefined,
   floor: row.floor || '',
   dispenserCount: Number(row.dispenser_count || 1),
+  dispenserBrand: row.dispenser_brand || undefined,
   activeGallons: Number(row.active_gallons || 1),
   emptyGallons: Number(row.empty_gallons || 0),
+  picName: row.pic_name || undefined,
+  status: row.status || 'Aktif',
+  notes: row.notes || undefined,
   lastRefillDate: row.last_refill_date || undefined,
 });
 

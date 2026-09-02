@@ -19,10 +19,12 @@ import {
   Droplet,
   Sparkles,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Compass
 } from 'lucide-react';
 import { StatusBadge, UrgencyBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
+import { TrackOrderModal } from '../components/common/TrackOrderModal';
 
 interface RequestsViewProps {
   filterStatus?: string;
@@ -61,6 +63,10 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
   // Delete Confirmation Modal (for Admin & Super Admin)
   const [requestToDelete, setRequestToDelete] = useState<ServiceRequest | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+  // Live Order Tracking Modal (for Photocopy & Laminating)
+  const [trackingRequest, setTrackingRequest] = useState<ServiceRequest | null>(null);
+  const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
 
   const canManageOrDelete = currentUser?.role === 'super_admin' || currentUser?.role === 'admin_rr';
 
@@ -321,6 +327,21 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                       <StatusBadge status={req.status} />
                     </td>
                     <td className="p-3.5 text-right space-x-1.5 whitespace-nowrap">
+                      {/* Lacak Button for Photocopy & Laminating */}
+                      {(req.serviceType === 'fotocopy' || req.serviceType === 'laminating') && (
+                        <button
+                          onClick={() => {
+                            setTrackingRequest(req);
+                            setIsTrackingModalOpen(true);
+                          }}
+                          className="px-2.5 py-1 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-md transition-colors cursor-pointer inline-flex items-center gap-1 shadow-2xs"
+                          title="Lacak Tahapan &amp; Progres Pengerjaan Order"
+                        >
+                          <Compass className="w-3.5 h-3.5 text-indigo-600 animate-spin-slow" />
+                          <span>Lacak</span>
+                        </button>
+                      )}
+
                       <button
                         onClick={() => {
                           setActiveDetailRequest(req);
@@ -864,6 +885,17 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
           </div>
         </Modal>
       )}
+
+      {/* LIVE ORDER TRACKING MODAL */}
+      <TrackOrderModal
+        isOpen={isTrackingModalOpen}
+        onClose={() => {
+          setIsTrackingModalOpen(false);
+          setTrackingRequest(null);
+        }}
+        request={trackingRequest}
+        onOpenReceipt={onOpenReceipt}
+      />
 
     </div>
   );

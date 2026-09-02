@@ -511,59 +511,84 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
       {activeTab === 'lokasi' && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {waterLocations.map((loc) => (
-              <div 
-                key={loc.id}
-                className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs hover:border-cyan-400 transition-all flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-bold bg-cyan-50 text-cyan-800 px-2 py-0.5 rounded border border-cyan-200">
-                      Unit: {loc.unit}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">{loc.floor}</span>
+            {waterLocations.map((loc) => {
+              const statusBadge = 
+                loc.status === 'Perbaikan Dispenser'
+                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                  : loc.status === 'Nonaktif'
+                  ? 'bg-slate-100 text-slate-600 border-slate-200'
+                  : 'bg-emerald-50 text-emerald-800 border-emerald-200';
+
+              return (
+                <div 
+                  key={loc.id}
+                  className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs hover:border-cyan-400 transition-all flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-mono font-extrabold bg-cyan-50 text-cyan-900 px-1.5 py-0.5 rounded border border-cyan-200">
+                          {loc.code || `TG-${loc.unit.slice(0, 3).toUpperCase()}-01`}
+                        </span>
+                        <span className="text-[10px] font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
+                          {loc.unit}
+                        </span>
+                      </div>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${statusBadge}`}>
+                        {loc.status || 'Aktif'}
+                      </span>
+                    </div>
+
+                    <h4 className="text-xs font-bold text-slate-900 mt-2">{loc.roomName}</h4>
+                    <p className="text-[11px] text-slate-500">{loc.department || 'Umum'} &bull; {loc.building || `Gedung ${loc.unit}`} ({loc.floor})</p>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                      <div>
+                        <span className="text-slate-400 text-[10px] block">Dispenser:</span>
+                        <strong className="text-slate-800 text-xs font-bold">{loc.dispenserCount || 1} Unit</strong>
+                        <span className="text-[10px] text-slate-500 block truncate">{loc.dispenserBrand || 'Standar'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 text-[10px] block">Galon Terpasang:</span>
+                        <strong className="text-cyan-800 text-xs font-bold">{loc.activeGallons || 1} Isi</strong>
+                        <span className="text-[10px] text-amber-700 block">{loc.emptyGallons || 0} Kosong</span>
+                      </div>
+                    </div>
+
+                    {loc.picName && (
+                      <div className="mt-2 text-[10px] text-slate-600">
+                        PIC: <strong className="text-slate-800">{loc.picName}</strong>
+                      </div>
+                    )}
+
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      Refill terakhir: <strong className="text-slate-700">{loc.lastRefillDate ? new Date(loc.lastRefillDate).toLocaleDateString('id-ID') : '-'}</strong>
+                    </div>
                   </div>
 
-                  <h4 className="text-xs font-bold text-slate-900 mt-2.5">{loc.roomName}</h4>
-
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                    <div>
-                      <span className="text-slate-400 text-[11px] block">Dispenser:</span>
-                      <strong className="text-slate-800 text-sm font-bold">{loc.dispenserCount} Unit</strong>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 text-[11px] block">Galon Terpasang:</span>
-                      <strong className="text-cyan-800 text-sm font-bold">{loc.activeGallons} Galon</strong>
-                    </div>
-                  </div>
-
-                  <div className="mt-2 text-[11px] text-slate-500">
-                    Refill terakhir: <strong className="text-slate-700">{loc.lastRefillDate ? new Date(loc.lastRefillDate).toLocaleDateString('id-ID') : '-'}</strong>
+                  <div className="mt-3 pt-3 border-t border-slate-100">
+                    <button
+                      onClick={() => {
+                        const userInUnit = users.find(u => u.unit === loc.unit) || currentUser;
+                        setRequestForm(prev => ({ 
+                          ...prev, 
+                          locationId: loc.id,
+                          unit: loc.unit,
+                          userId: userInUnit?.id || prev.userId,
+                          gallonCount: 1,
+                          emptyGallonsReturned: 1
+                        }));
+                        setIsRequestModalOpen(true);
+                      }}
+                      className="w-full py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Minta Refill Galon Ini</span>
+                    </button>
                   </div>
                 </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-100">
-                  <button
-                    onClick={() => {
-                      const userInUnit = users.find(u => u.unit === loc.unit) || currentUser;
-                      setRequestForm(prev => ({ 
-                        ...prev, 
-                        locationId: loc.id,
-                        unit: loc.unit,
-                        userId: userInUnit?.id || prev.userId,
-                        gallonCount: 1,
-                        emptyGallonsReturned: 1
-                      }));
-                      setIsRequestModalOpen(true);
-                    }}
-                    className="w-full py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Minta Refill Galon Ini</span>
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -983,10 +1008,10 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                 required
               >
                 {waterLocations
-                  .filter(l => l.unit === requestForm.unit || true)
+                  .filter(l => !requestForm.unit || l.unit === requestForm.unit)
                   .map(l => (
                     <option key={l.id} value={l.id}>
-                      {l.roomName} ({l.unit} - {l.floor})
+                      [{l.code || `TG-${l.unit.slice(0, 3).toUpperCase()}`}] {l.roomName} &bull; {l.unit} {l.department ? `(${l.department})` : ''} - {l.floor}
                     </option>
                   ))}
               </select>

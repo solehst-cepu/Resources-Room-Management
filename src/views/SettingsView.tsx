@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { User, UserRole, RoleConfig, RolePermissions, MasterUnit, MasterDepartment } from '../types';
+import { User, UserRole, RoleConfig, RolePermissions, MasterUnit, MasterDepartment, WaterLocation } from '../types';
 import { 
   Settings, 
   Users, 
@@ -59,6 +59,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     departments, 
     items,
     requests,
+    waterLocations,
     waterInventory,
     waterProviderLogs,
     waterOpnameRecords,
@@ -67,6 +68,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     isSyncingToSupabase,
     syncAllToSupabase,
     refreshSupabaseConnection,
+    addWaterLocation,
+    updateWaterLocation,
+    deleteWaterLocation,
     updateInitialWaterAssets,
     addWaterProviderDelivery,
     performWaterStockOpname,
@@ -151,6 +155,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     name: ''
   });
   const [deleteDeptConfirm, setDeleteDeptConfirm] = useState<MasterDepartment | null>(null);
+
+  // Sub-tab in Galon Tab
+  const [galonSubTab, setGalonSubTab] = useState<'titik' | 'inventori' | 'provider' | 'opname'>('titik');
+
+  // Master Titik Galon States
+  const [waterLocSearch, setWaterLocSearch] = useState('');
+  const [waterLocUnitFilter, setWaterLocUnitFilter] = useState('all');
+  const [waterLocDeptFilter, setWaterLocDeptFilter] = useState('all');
+  const [waterLocStatusFilter, setWaterLocStatusFilter] = useState('all');
+  const [isWaterLocModalOpen, setIsWaterLocModalOpen] = useState(false);
+  const [editingWaterLoc, setEditingWaterLoc] = useState<WaterLocation | null>(null);
+  const [deleteWaterLocConfirm, setDeleteWaterLocConfirm] = useState<WaterLocation | null>(null);
+
+  const [waterLocForm, setWaterLocForm] = useState({
+    code: '',
+    unit: 'SMP',
+    unitId: '',
+    department: '',
+    departmentId: '',
+    roomName: '',
+    building: '',
+    floor: 'Lantai 2',
+    dispenserCount: 1,
+    dispenserBrand: 'Miyako WDP-300 Hot & Cool',
+    activeGallons: 1,
+    emptyGallons: 0,
+    picName: '',
+    status: 'Aktif' as 'Aktif' | 'Nonaktif' | 'Perbaikan Dispenser',
+    notes: ''
+  });
 
   // Keep permissions draft in sync when selecting a role or roleConfigs change
   useEffect(() => {
@@ -382,6 +416,148 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     setDeleteDeptConfirm(null);
   };
 
+  // Master Titik Galon Handlers
+  const handleOpenAddWaterLoc = () => {
+    setEditingWaterLoc(null);
+    const defaultUnit = units[0]?.name || 'SMP';
+    const defaultUnitObj = units.find(u => u.name === defaultUnit) || units[0];
+    const deptForUnit = departments.find(d => d.unitName === defaultUnit || d.unitId === defaultUnitObj?.id);
+    const unitPrefix = (defaultUnitObj?.code || defaultUnit).replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase();
+    const countInUnit = waterLocations.filter(l => l.unit === defaultUnit).length + 1;
+    const generatedCode = `TG-${unitPrefix}-${countInUnit.toString().padStart(2, '0')}`;
+
+    setWaterLocForm({
+      code: generatedCode,
+      unit: defaultUnit,
+      unitId: defaultUnitObj?.id || '',
+      department: deptForUnit ? deptForUnit.name : '',
+      departmentId: deptForUnit ? deptForUnit.id : '',
+      roomName: '',
+      building: `Gedung ${defaultUnit}`,
+      floor: 'Lantai 1',
+      dispenserCount: 1,
+      dispenserBrand: 'Miyako WDP-300 Hot & Cool',
+      activeGallons: 1,
+      emptyGallons: 0,
+      picName: '',
+      status: 'Aktif',
+      notes: ''
+    });
+    setIsWaterLocModalOpen(true);
+  };
+
+  const handleOpenEditWaterLoc = (loc: WaterLocation) => {
+    setEditingWaterLoc(loc);
+    setWaterLocForm({
+      code: loc.code || `TG-${loc.unit.slice(0, 3).toUpperCase()}-01`,
+      unit: loc.unit,
+      unitId: loc.unitId || '',
+      department: loc.department || '',
+      departmentId: loc.departmentId || '',
+      roomName: loc.roomName,
+      building: loc.building || '',
+      floor: loc.floor || 'Lantai 1',
+      dispenserCount: loc.dispenserCount || 1,
+      dispenserBrand: loc.dispenserBrand || '',
+      activeGallons: loc.activeGallons || 1,
+      emptyGallons: loc.emptyGallons || 0,
+      picName: loc.picName || '',
+      status: loc.status || 'Aktif',
+      notes: loc.notes || ''
+    });
+    setIsWaterLocModalOpen(true);
+  };
+
+  const handleSaveWaterLoc = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!waterLocForm.roomName.trim()) {
+      showToast('error', 'Validasi Gagal', 'Nama Ruangan / Titik Galon wajib diisi');
+      return;
+    }
+    if (!waterLocForm.unit) {
+      showToast('error', 'Validasi Gagal', 'Pilih Unit Sekolah');
+      return;
+    }
+
+    const selectedUnitObj = units.find(u => u.name === waterLocForm.unit || u.code === waterLocForm.unit);
+    const selectedDeptObj = departments.find(d => d.name === waterLocForm.department);
+
+    if (editingWaterLoc) {
+      updateWaterLocation(editingWaterLoc.id, {
+        code: waterLocForm.code.trim(),
+        unit: waterLocForm.unit,
+        unitId: selectedUnitObj?.id || waterLocForm.unitId,
+        department: waterLocForm.department,
+        departmentId: selectedDeptObj?.id || waterLocForm.departmentId,
+        roomName: waterLocForm.roomName.trim(),
+        building: waterLocForm.building.trim(),
+        floor: waterLocForm.floor.trim(),
+        dispenserCount: Number(waterLocForm.dispenserCount) || 1,
+        dispenserBrand: waterLocForm.dispenserBrand.trim(),
+        activeGallons: Number(waterLocForm.activeGallons) || 1,
+        emptyGallons: Number(waterLocForm.emptyGallons) || 0,
+        picName: waterLocForm.picName.trim(),
+        status: waterLocForm.status,
+        notes: waterLocForm.notes.trim()
+      });
+    } else {
+      addWaterLocation({
+        code: waterLocForm.code.trim(),
+        unit: waterLocForm.unit,
+        unitId: selectedUnitObj?.id || waterLocForm.unitId,
+        department: waterLocForm.department,
+        departmentId: selectedDeptObj?.id || waterLocForm.departmentId,
+        roomName: waterLocForm.roomName.trim(),
+        building: waterLocForm.building.trim(),
+        floor: waterLocForm.floor.trim(),
+        dispenserCount: Number(waterLocForm.dispenserCount) || 1,
+        dispenserBrand: waterLocForm.dispenserBrand.trim(),
+        activeGallons: Number(waterLocForm.activeGallons) || 1,
+        emptyGallons: Number(waterLocForm.emptyGallons) || 0,
+        picName: waterLocForm.picName.trim(),
+        status: waterLocForm.status,
+        notes: waterLocForm.notes.trim(),
+        lastRefillDate: new Date().toISOString().slice(0, 10)
+      });
+    }
+    setIsWaterLocModalOpen(false);
+    setEditingWaterLoc(null);
+  };
+
+  const handleConfirmDeleteWaterLoc = () => {
+    if (!deleteWaterLocConfirm) return;
+    deleteWaterLocation(deleteWaterLocConfirm.id);
+    setDeleteWaterLocConfirm(null);
+  };
+
+  const handleExportWaterLocationsCSV = () => {
+    const headers = ['Kode Titik', 'Unit', 'Departemen', 'Nama Ruangan', 'Gedung', 'Lantai', 'Jumlah Dispenser', 'Merk Dispenser', 'Galon Aktif', 'Galon Kosong', 'PIC Ruangan', 'Status', 'Catatan'];
+    const rows = waterLocations.map(l => [
+      `"${l.code || ''}"`,
+      `"${l.unit}"`,
+      `"${l.department || ''}"`,
+      `"${l.roomName}"`,
+      `"${l.building || ''}"`,
+      `"${l.floor || ''}"`,
+      l.dispenserCount || 1,
+      `"${l.dispenserBrand || ''}"`,
+      l.activeGallons || 1,
+      l.emptyGallons || 0,
+      `"${l.picName || ''}"`,
+      `"${l.status || 'Aktif'}"`,
+      `"${(l.notes || '').replace(/"/g, '""')}"`
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Master_Titik_Galon_Lazuardi_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('success', 'Ekspor Berhasil', 'Data master titik galon berhasil diunduh dalam format CSV.');
+  };
+
   const handleResetData = () => {
     if (window.confirm('Apakah Anda yakin ingin me-reset seluruh data ke setelan awal Sekolah Lazuardi?')) {
       localStorage.clear();
@@ -419,6 +595,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     const matchUnit = userUnitFilter === 'all' || u.unit === userUnitFilter;
     return matchSearch && matchRole && matchUnit;
   });
+
+  // Filtered Water Locations list
+  const filteredWaterLocations = waterLocations.filter(loc => {
+    const q = waterLocSearch.toLowerCase().trim();
+    const matchSearch = 
+      !q || 
+      (loc.roomName && loc.roomName.toLowerCase().includes(q)) ||
+      (loc.code && loc.code.toLowerCase().includes(q)) ||
+      (loc.building && loc.building.toLowerCase().includes(q)) ||
+      (loc.floor && loc.floor.toLowerCase().includes(q)) ||
+      (loc.picName && loc.picName.toLowerCase().includes(q)) ||
+      (loc.unit && loc.unit.toLowerCase().includes(q)) ||
+      (loc.department && loc.department.toLowerCase().includes(q)) ||
+      (loc.dispenserBrand && loc.dispenserBrand.toLowerCase().includes(q));
+
+    const matchUnit = waterLocUnitFilter === 'all' || loc.unit === waterLocUnitFilter;
+    const matchDept = waterLocDeptFilter === 'all' || loc.department === waterLocDeptFilter;
+    const matchStatus = waterLocStatusFilter === 'all' || (loc.status || 'Aktif') === waterLocStatusFilter;
+
+    return matchSearch && matchUnit && matchDept && matchStatus;
+  });
+
+  const totalDispensersCount = waterLocations.reduce((sum, l) => sum + (l.dispenserCount || 1), 0);
+  const totalActiveGallonsInLocations = waterLocations.reduce((sum, l) => sum + (l.activeGallons || 1), 0);
+  const totalEmptyGallonsInLocations = waterLocations.reduce((sum, l) => sum + (l.emptyGallons || 0), 0);
+  const uniqueUnitsWithLocations = Array.from(new Set(waterLocations.map(l => l.unit))).length;
 
   // Permission Groups Definition
   const permissionGroups = [
@@ -1758,158 +1960,475 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
                 <Droplet className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Master Data Inventori Galon &amp; Stock Opname</h3>
+                <h3 className="text-sm font-bold text-slate-900">Master Data Titik Galon, Inventori &amp; Stock Opname</h3>
                 <p className="text-xs text-slate-500">
-                  Konfigurasi modal galon awal, pencatatan penerimaan galon isi provider &amp; pengembalian galon kosong
+                  Manajemen master titik penempatan dispenser ruangan per unit &amp; departemen, mutasi galon isi/kosong, dan audit aset
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               <span className="text-xs bg-cyan-50 text-cyan-800 font-bold px-3 py-1.5 rounded-lg border border-cyan-200">
-                Total Aset: {waterInventory.initialTotalAssets || 68} Galon
+                Total Aset Yayasan: {waterInventory.initialTotalAssets || 68} Galon
               </span>
             </div>
           </div>
 
-          {/* 4 Cards Summary */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-white p-4 rounded-xl border border-cyan-200 shadow-xs">
-              <span className="text-[11px] font-bold text-cyan-800 uppercase block">1. Modal Galon Awal</span>
-              <strong className="text-2xl font-extrabold text-cyan-950 block mt-1">
-                {waterInventory.initialTotalAssets || 68} <span className="text-xs font-normal text-slate-500">Galon</span>
-              </strong>
-              <p className="text-[11px] text-slate-500 mt-1">Total kepemilikan aset yayasan</p>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs">
-              <span className="text-[11px] font-bold text-emerald-800 uppercase block">2. Galon Isi Siap (RR)</span>
-              <strong className="text-2xl font-extrabold text-emerald-700 block mt-1">
-                {waterInventory.filledGallons} <span className="text-xs font-normal text-slate-500">Galon</span>
-              </strong>
-              <p className="text-[11px] text-emerald-600 mt-1">Tersedia di gudang RR</p>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-amber-200 shadow-xs">
-              <span className="text-[11px] font-bold text-amber-800 uppercase block">3. Galon Kosong (RR)</span>
-              <strong className="text-2xl font-extrabold text-amber-700 block mt-1">
-                {waterInventory.emptyGallons} <span className="text-xs font-normal text-slate-500">Galon</span>
-              </strong>
-              <p className="text-[11px] text-amber-600 mt-1">Siap tukar saat provider datang</p>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-blue-200 shadow-xs">
-              <span className="text-[11px] font-bold text-blue-800 uppercase block">4. Aktif di Ruangan</span>
-              <strong className="text-2xl font-extrabold text-blue-700 block mt-1">
-                {waterInventory.inDistribution} <span className="text-xs font-normal text-slate-500">Galon</span>
-              </strong>
-              <p className="text-[11px] text-slate-500 mt-1">Terpasang pada dispenser unit</p>
-            </div>
+          {/* Sub-tab Navigation */}
+          <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
+            <button
+              onClick={() => setGalonSubTab('titik')}
+              className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+                galonSubTab === 'titik'
+                  ? 'bg-cyan-700 text-white shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Building className="w-4 h-4" />
+              <span>Master Titik Penempatan Galon ({waterLocations.length})</span>
+            </button>
+            <button
+              onClick={() => setGalonSubTab('inventori')}
+              className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+                galonSubTab === 'inventori'
+                  ? 'bg-cyan-700 text-white shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Package className="w-4 h-4" />
+              <span>Ringkasan Inventori &amp; Aset</span>
+            </button>
+            <button
+              onClick={() => setGalonSubTab('provider')}
+              className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+                galonSubTab === 'provider'
+                  ? 'bg-cyan-700 text-white shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Riwayat Pengiriman Provider ({waterProviderLogs.length})</span>
+            </button>
+            <button
+              onClick={() => setGalonSubTab('opname')}
+              className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+                galonSubTab === 'opname'
+                  ? 'bg-cyan-700 text-white shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <ClipboardCheck className="w-4 h-4" />
+              <span>Riwayat Stock Opname ({waterOpnameRecords.length})</span>
+            </button>
           </div>
 
-          {/* Provider Log History in Master Data */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                  Riwayat Pengiriman &amp; Pertukaran Galon Provider
-                </h4>
-                <p className="text-[11px] text-slate-500">
-                  Data saat galon isi datang dan berapa galon kosong yang dibawa oleh provider
-                </p>
+          {/* SUBTAB 1: MASTER TITIK PENEMPATAN GALON RUANGAN */}
+          {galonSubTab === 'titik' && (
+            <div className="space-y-4">
+              {/* 4 Cards Summary Titik Galon */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="bg-white p-4 rounded-xl border border-cyan-200 shadow-xs">
+                  <span className="text-[11px] font-bold text-cyan-800 uppercase block">1. Total Titik Penempatan</span>
+                  <strong className="text-2xl font-extrabold text-cyan-950 block mt-1">
+                    {waterLocations.length} <span className="text-xs font-normal text-slate-500">Ruangan</span>
+                  </strong>
+                  <p className="text-[11px] text-slate-500 mt-1">Tersebar di seluruh unit Lazuardi</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-blue-200 shadow-xs">
+                  <span className="text-[11px] font-bold text-blue-800 uppercase block">2. Total Dispenser Terpasang</span>
+                  <strong className="text-2xl font-extrabold text-blue-700 block mt-1">
+                    {totalDispensersCount} <span className="text-xs font-normal text-slate-500">Unit</span>
+                  </strong>
+                  <p className="text-[11px] text-slate-500 mt-1">Perangkat dispenser aktif &amp; siap pakai</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs">
+                  <span className="text-[11px] font-bold text-emerald-800 uppercase block">3. Galon Aktif Terpasang</span>
+                  <strong className="text-2xl font-extrabold text-emerald-700 block mt-1">
+                    {totalActiveGallonsInLocations} <span className="text-xs font-normal text-slate-500">Galon</span>
+                  </strong>
+                  <p className="text-[11px] text-emerald-600 mt-1">Sedang melayani guru &amp; siswa</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-purple-200 shadow-xs">
+                  <span className="text-[11px] font-bold text-purple-800 uppercase block">4. Unit Terdistribusi</span>
+                  <strong className="text-2xl font-extrabold text-purple-700 block mt-1">
+                    {uniqueUnitsWithLocations} <span className="text-xs font-normal text-slate-500">Unit/Bagian</span>
+                  </strong>
+                  <p className="text-[11px] text-purple-600 mt-1">TK, SD, SMP, SMA, GA, Security, dll</p>
+                </div>
               </div>
-              <span className="text-xs text-slate-400 font-medium">{waterProviderLogs.length} catatan pengiriman</span>
-            </div>
 
-            <table className="w-full text-left text-xs text-slate-700">
-              <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                <tr>
-                  <th className="p-3">Tanggal &amp; Waktu</th>
-                  <th className="p-3">No. Surat Jalan</th>
-                  <th className="p-3">Distributor / Supplier</th>
-                  <th className="p-3">Driver</th>
-                  <th className="p-3 text-center bg-emerald-50 text-emerald-900 font-bold">Galon Isi Datang (+)</th>
-                  <th className="p-3 text-center bg-amber-50 text-amber-900 font-bold">Galon Kosong Dibawa (-)</th>
-                  <th className="p-3">Penerima</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {waterProviderLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50/60">
-                    <td className="p-3 font-mono text-slate-500">
-                      {new Date(log.date).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
-                    </td>
-                    <td className="p-3 font-mono font-bold text-blue-900">{log.deliveryNumber}</td>
-                    <td className="p-3 font-semibold text-slate-800">{log.supplierName}</td>
-                    <td className="p-3 text-slate-600">{log.driverName || '-'}</td>
-                    <td className="p-3 text-center font-bold text-emerald-700 bg-emerald-50/30">
-                      +{log.filledReceived} Galon
-                    </td>
-                    <td className="p-3 text-center font-bold text-amber-700 bg-amber-50/30">
-                      -{log.emptyReturned} Galon
-                    </td>
-                    <td className="p-3 text-slate-700">{log.receivedBy}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              {/* Filter & Action Bar */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col lg:flex-row items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+                  {/* Search Input */}
+                  <div className="relative flex-1 sm:w-64">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      placeholder="Cari kode titik, ruangan, gedung, PIC..."
+                      value={waterLocSearch}
+                      onChange={(e) => setWaterLocSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-cyan-600 focus:bg-white"
+                    />
+                  </div>
 
-          {/* Opname Ledger in Master Data */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                  Riwayat Audit Stock Opname Galon
-                </h4>
-                <p className="text-[11px] text-slate-500">
-                  Hasil audit fisik berkala galon di gudang RR dan ruang-ruang sekolah
-                </p>
+                  {/* Filter Unit */}
+                  <select
+                    value={waterLocUnitFilter}
+                    onChange={(e) => {
+                      setWaterLocUnitFilter(e.target.value);
+                      setWaterLocDeptFilter('all');
+                    }}
+                    className="p-2 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-cyan-600 font-medium text-slate-700"
+                  >
+                    <option value="all">Semua Master Unit</option>
+                    {units.map(u => (
+                      <option key={u.id} value={u.name}>{u.name}</option>
+                    ))}
+                  </select>
+
+                  {/* Filter Departemen */}
+                  <select
+                    value={waterLocDeptFilter}
+                    onChange={(e) => setWaterLocDeptFilter(e.target.value)}
+                    className="p-2 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-cyan-600 font-medium text-slate-700"
+                  >
+                    <option value="all">Semua Departemen</option>
+                    {departments
+                      .filter(d => waterLocUnitFilter === 'all' || d.unitName === waterLocUnitFilter || d.unitId === waterLocUnitFilter)
+                      .map(d => (
+                        <option key={d.id} value={d.name}>{d.name} ({d.unitName})</option>
+                      ))}
+                  </select>
+
+                  {/* Filter Status */}
+                  <select
+                    value={waterLocStatusFilter}
+                    onChange={(e) => setWaterLocStatusFilter(e.target.value)}
+                    className="p-2 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-cyan-600 font-medium text-slate-700"
+                  >
+                    <option value="all">Semua Status</option>
+                    <option value="Aktif">Aktif</option>
+                    <option value="Perbaikan Dispenser">Perbaikan Dispenser</option>
+                    <option value="Nonaktif">Nonaktif</option>
+                  </select>
+                </div>
+
+                {/* Actions: Add & Export */}
+                <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+                  <button
+                    onClick={handleExportWaterLocationsCSV}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200"
+                    title="Unduh daftar master titik galon dalam format CSV"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Ekspor CSV</span>
+                  </button>
+
+                  <button
+                    onClick={handleOpenAddWaterLoc}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Tambah Titik Galon</span>
+                  </button>
+                </div>
               </div>
-              <span className="text-xs text-slate-400 font-medium">{waterOpnameRecords.length} audit</span>
-            </div>
 
-            <table className="w-full text-left text-xs text-slate-700">
-              <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                <tr>
-                  <th className="p-3">No. Opname</th>
-                  <th className="p-3">Tanggal</th>
-                  <th className="p-3">Auditor</th>
-                  <th className="p-3 text-center">Fisik Isi</th>
-                  <th className="p-3 text-center">Fisik Kosong</th>
-                  <th className="p-3 text-center">Di Ruangan</th>
-                  <th className="p-3 text-center">Rusak / Hilang</th>
-                  <th className="p-3 text-center font-bold">Total Fisik</th>
-                  <th className="p-3 text-center">Selisih</th>
-                  <th className="p-3">Catatan</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {waterOpnameRecords.map((opn) => (
-                  <tr key={opn.id} className="hover:bg-slate-50/60">
-                    <td className="p-3 font-mono font-bold text-slate-900">{opn.opnameNumber}</td>
-                    <td className="p-3 text-slate-500 font-mono text-[11px]">
-                      {new Date(opn.date).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
-                    </td>
-                    <td className="p-3 font-semibold text-slate-800">{opn.auditorName}</td>
-                    <td className="p-3 text-center font-semibold text-emerald-800">{opn.physicalFilled}</td>
-                    <td className="p-3 text-center font-semibold text-amber-800">{opn.physicalEmpty}</td>
-                    <td className="p-3 text-center font-semibold text-blue-800">{opn.physicalInRooms}</td>
-                    <td className="p-3 text-center font-semibold text-rose-800">{opn.physicalDamaged + opn.physicalLost}</td>
-                    <td className="p-3 text-center font-extrabold text-cyan-900 bg-cyan-50/40">{opn.totalPhysical}</td>
-                    <td className="p-3 text-center font-bold">
-                      {opn.variance === 0 ? (
-                        <span className="text-emerald-700">0 (Klop)</span>
-                      ) : (
-                        <span className="text-rose-700">{opn.variance > 0 ? `+${opn.variance}` : opn.variance}</span>
-                      )}
-                    </td>
-                    <td className="p-3 text-slate-500 max-w-xs truncate">{opn.notes || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              {/* Table of Water Locations */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                      Daftar Master Titik Galon &amp; Dispenser Ruangan
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Penempatan galon air minum Aqua 19L di ruang kelas, laboratorium, kantor unit &amp; pos staf
+                    </p>
+                  </div>
+                  <span className="text-xs text-slate-400 font-medium">
+                    Menampilkan {filteredWaterLocations.length} dari {waterLocations.length} titik
+                  </span>
+                </div>
+
+                {filteredWaterLocations.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500 text-xs space-y-2">
+                    <Droplet className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="font-semibold text-slate-700">Tidak ada titik galon yang sesuai dengan filter.</p>
+                    <button
+                      onClick={() => {
+                        setWaterLocSearch('');
+                        setWaterLocUnitFilter('all');
+                        setWaterLocDeptFilter('all');
+                        setWaterLocStatusFilter('all');
+                      }}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-cyan-700 font-bold rounded-lg transition-colors cursor-pointer"
+                    >
+                      Reset Filter
+                    </button>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs text-slate-700">
+                      <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                        <tr>
+                          <th className="p-3">Kode Titik</th>
+                          <th className="p-3">Nama Ruangan &amp; Penempatan</th>
+                          <th className="p-3">Master Unit &amp; Departemen</th>
+                          <th className="p-3">Dispenser</th>
+                          <th className="p-3 text-center">Galon (Aktif/Kosong)</th>
+                          <th className="p-3">PIC Ruangan</th>
+                          <th className="p-3 text-center">Status</th>
+                          <th className="p-3 text-right">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredWaterLocations.map((loc) => {
+                          const statusColor = 
+                            loc.status === 'Perbaikan Dispenser' 
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : loc.status === 'Nonaktif'
+                              ? 'bg-slate-100 text-slate-600 border-slate-200'
+                              : 'bg-emerald-50 text-emerald-800 border-emerald-200';
+
+                          return (
+                            <tr key={loc.id} className="hover:bg-slate-50/70 transition-colors">
+                              <td className="p-3">
+                                <span className="font-mono font-extrabold text-cyan-900 bg-cyan-50 px-2 py-1 rounded-md border border-cyan-200 text-[11px]">
+                                  {loc.code || `TG-${loc.unit.slice(0, 3).toUpperCase()}-01`}
+                                </span>
+                              </td>
+                              <td className="p-3">
+                                <div className="font-bold text-slate-900">{loc.roomName}</div>
+                                <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                                  <span>{loc.building || `Gedung ${loc.unit}`}</span>
+                                  <span>&bull;</span>
+                                  <span>{loc.floor || 'Lantai 1'}</span>
+                                </div>
+                                {loc.notes && (
+                                  <div className="text-[10px] text-slate-400 italic mt-0.5 max-w-xs truncate">
+                                    Catatan: {loc.notes}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="p-3">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                                    {loc.unit}
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-slate-500 mt-0.5">
+                                  {loc.department || 'Umum Unit'}
+                                </div>
+                              </td>
+                              <td className="p-3">
+                                <div className="font-bold text-slate-800">
+                                  {loc.dispenserCount || 1} Unit
+                                </div>
+                                <div className="text-[11px] text-slate-500">
+                                  {loc.dispenserBrand || 'Dispenser Standar'}
+                                </div>
+                              </td>
+                              <td className="p-3 text-center">
+                                <div className="inline-flex items-center gap-1 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 font-bold text-[11px]">
+                                  <span className="text-emerald-700">{loc.activeGallons || 1} Isi</span>
+                                  <span className="text-slate-300">/</span>
+                                  <span className="text-amber-700">{loc.emptyGallons || 0} Kosong</span>
+                                </div>
+                              </td>
+                              <td className="p-3">
+                                <div className="font-medium text-slate-800">
+                                  {loc.picName || '-'}
+                                </div>
+                              </td>
+                              <td className="p-3 text-center">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusColor}`}>
+                                  {loc.status || 'Aktif'}
+                                </span>
+                              </td>
+                              <td className="p-3 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => handleOpenEditWaterLoc(loc)}
+                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Edit Titik Galon"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteWaterLocConfirm(loc)}
+                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Hapus Titik Galon"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SUBTAB 2: RINGKASAN INVENTORI & ASET */}
+          {galonSubTab === 'inventori' && (
+            <div className="space-y-6">
+              {/* 4 Cards Summary */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="bg-white p-4 rounded-xl border border-cyan-200 shadow-xs">
+                  <span className="text-[11px] font-bold text-cyan-800 uppercase block">1. Modal Galon Awal</span>
+                  <strong className="text-2xl font-extrabold text-cyan-950 block mt-1">
+                    {waterInventory.initialTotalAssets || 68} <span className="text-xs font-normal text-slate-500">Galon</span>
+                  </strong>
+                  <p className="text-[11px] text-slate-500 mt-1">Total kepemilikan aset yayasan</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs">
+                  <span className="text-[11px] font-bold text-emerald-800 uppercase block">2. Galon Isi Siap (RR)</span>
+                  <strong className="text-2xl font-extrabold text-emerald-700 block mt-1">
+                    {waterInventory.filledGallons} <span className="text-xs font-normal text-slate-500">Galon</span>
+                  </strong>
+                  <p className="text-[11px] text-emerald-600 mt-1">Tersedia di gudang RR</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-amber-200 shadow-xs">
+                  <span className="text-[11px] font-bold text-amber-800 uppercase block">3. Galon Kosong (RR)</span>
+                  <strong className="text-2xl font-extrabold text-amber-700 block mt-1">
+                    {waterInventory.emptyGallons} <span className="text-xs font-normal text-slate-500">Galon</span>
+                  </strong>
+                  <p className="text-[11px] text-amber-600 mt-1">Siap tukar saat provider datang</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-blue-200 shadow-xs">
+                  <span className="text-[11px] font-bold text-blue-800 uppercase block">4. Aktif di Ruangan</span>
+                  <strong className="text-2xl font-extrabold text-blue-700 block mt-1">
+                    {waterInventory.inDistribution} <span className="text-xs font-normal text-slate-500">Galon</span>
+                  </strong>
+                  <p className="text-[11px] text-slate-500 mt-1">Terpasang pada dispenser unit</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SUBTAB 3: RIWAYAT PROVIDER */}
+          {galonSubTab === 'provider' && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    Riwayat Pengiriman &amp; Pertukaran Galon Provider
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Data saat galon isi datang dan berapa galon kosong yang dibawa oleh provider
+                  </p>
+                </div>
+                <span className="text-xs text-slate-400 font-medium">{waterProviderLogs.length} catatan pengiriman</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">Tanggal &amp; Waktu</th>
+                      <th className="p-3">No. Surat Jalan</th>
+                      <th className="p-3">Distributor / Supplier</th>
+                      <th className="p-3">Driver</th>
+                      <th className="p-3 text-center bg-emerald-50 text-emerald-900 font-bold">Galon Isi Datang (+)</th>
+                      <th className="p-3 text-center bg-amber-50 text-amber-900 font-bold">Galon Kosong Dibawa (-)</th>
+                      <th className="p-3">Penerima</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {waterProviderLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50/60">
+                        <td className="p-3 font-mono text-slate-500">
+                          {new Date(log.date).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
+                        </td>
+                        <td className="p-3 font-mono font-bold text-blue-900">{log.deliveryNumber}</td>
+                        <td className="p-3 font-semibold text-slate-800">{log.supplierName}</td>
+                        <td className="p-3 text-slate-600">{log.driverName || '-'}</td>
+                        <td className="p-3 text-center font-bold text-emerald-700 bg-emerald-50/30">
+                          +{log.filledReceived} Galon
+                        </td>
+                        <td className="p-3 text-center font-bold text-amber-700 bg-amber-50/30">
+                          -{log.emptyReturned} Galon
+                        </td>
+                        <td className="p-3 text-slate-700">{log.receivedBy}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* SUBTAB 4: RIWAYAT OPNAME */}
+          {galonSubTab === 'opname' && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    Riwayat Audit Stock Opname Galon
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Hasil audit fisik berkala galon di gudang RR dan ruang-ruang sekolah
+                  </p>
+                </div>
+                <span className="text-xs text-slate-400 font-medium">{waterOpnameRecords.length} audit</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">No. Opname</th>
+                      <th className="p-3">Tanggal</th>
+                      <th className="p-3">Auditor</th>
+                      <th className="p-3 text-center">Fisik Isi</th>
+                      <th className="p-3 text-center">Fisik Kosong</th>
+                      <th className="p-3 text-center">Di Ruangan</th>
+                      <th className="p-3 text-center">Rusak / Hilang</th>
+                      <th className="p-3 text-center font-bold">Total Fisik</th>
+                      <th className="p-3 text-center">Selisih</th>
+                      <th className="p-3">Catatan</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {waterOpnameRecords.map((opn) => (
+                      <tr key={opn.id} className="hover:bg-slate-50/60">
+                        <td className="p-3 font-mono font-bold text-slate-900">{opn.opnameNumber}</td>
+                        <td className="p-3 text-slate-500 font-mono text-[11px]">
+                          {new Date(opn.date).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
+                        </td>
+                        <td className="p-3 font-semibold text-slate-800">{opn.auditorName}</td>
+                        <td className="p-3 text-center font-semibold text-emerald-800">{opn.physicalFilled}</td>
+                        <td className="p-3 text-center font-semibold text-amber-800">{opn.physicalEmpty}</td>
+                        <td className="p-3 text-center font-semibold text-blue-800">{opn.physicalInRooms}</td>
+                        <td className="p-3 text-center font-semibold text-rose-800">{opn.physicalDamaged + opn.physicalLost}</td>
+                        <td className="p-3 text-center font-extrabold text-cyan-900 bg-cyan-50/40">{opn.totalPhysical}</td>
+                        <td className="p-3 text-center font-bold">
+                          {opn.variance === 0 ? (
+                            <span className="text-emerald-700">0 (Klop)</span>
+                          ) : (
+                            <span className="text-rose-700">{opn.variance > 0 ? `+${opn.variance}` : opn.variance}</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-slate-500 max-w-xs truncate">{opn.notes || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2406,6 +2925,312 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
               className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg cursor-pointer shadow-xs"
             >
               Ya, Hapus Departemen
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* MODAL TAMBAH / EDIT TITIK GALON */}
+      <Modal
+        isOpen={isWaterLocModalOpen}
+        onClose={() => setIsWaterLocModalOpen(false)}
+        title={editingWaterLoc ? 'Edit Titik Penempatan Galon' : 'Tambah Titik Penempatan Galon Baru'}
+        subtitle="Registrasi Lokasi Dispenser Berdasarkan Master Unit & Departemen"
+        maxWidth="lg"
+      >
+        <form onSubmit={handleSaveWaterLoc} className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Kode Titik Galon *
+              </label>
+              <input
+                type="text"
+                placeholder="Contoh: TG-SMP-01"
+                value={waterLocForm.code}
+                onChange={(e) => setWaterLocForm({ ...waterLocForm, code: e.target.value })}
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono font-bold outline-cyan-600 uppercase"
+                required
+              />
+              <span className="text-[10px] text-slate-400 mt-1 block">
+                Format: TG-[UNIT]-[NOMOR], misal: TG-SMP-01, TG-TK-02
+              </span>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Status Titik Dispenser *
+              </label>
+              <select
+                value={waterLocForm.status}
+                onChange={(e) => setWaterLocForm({ ...waterLocForm, status: e.target.value as any })}
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 outline-cyan-600 font-semibold"
+                required
+              >
+                <option value="Aktif">Aktif (Beroperasi Normal)</option>
+                <option value="Perbaikan Dispenser">Perbaikan Dispenser (Maintenance)</option>
+                <option value="Nonaktif">Nonaktif (Sementara Tidak Dipakai)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Master Unit & Master Departemen */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+            <div>
+              <label className="block font-bold text-cyan-950 mb-1">
+                Pilih Master Unit Sekolah *
+              </label>
+              <select
+                value={waterLocForm.unit}
+                onChange={(e) => {
+                  const newUnit = e.target.value;
+                  const unitObj = units.find(u => u.name === newUnit);
+                  const depts = departments.filter(d => d.unitName === newUnit || d.unitId === unitObj?.id);
+                  const prefix = (unitObj?.code || newUnit).replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase();
+                  const countInUnit = waterLocations.filter(l => l.unit === newUnit).length + 1;
+                  const autoCode = editingWaterLoc ? waterLocForm.code : `TG-${prefix}-${countInUnit.toString().padStart(2, '0')}`;
+
+                  setWaterLocForm(prev => ({
+                    ...prev,
+                    unit: newUnit,
+                    unitId: unitObj?.id || '',
+                    department: depts.length > 0 ? depts[0].name : '',
+                    departmentId: depts.length > 0 ? depts[0].id : '',
+                    building: prev.building || `Gedung ${newUnit}`,
+                    code: autoCode
+                  }));
+                }}
+                className="w-full p-2.5 bg-white border border-cyan-300 rounded-lg text-slate-900 font-bold outline-cyan-600"
+                required
+              >
+                {units.map(u => (
+                  <option key={u.id} value={u.name}>Unit {u.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-bold text-cyan-950 mb-1">
+                Pilih Master Departemen *
+              </label>
+              <select
+                value={waterLocForm.department}
+                onChange={(e) => {
+                  const newDeptName = e.target.value;
+                  const deptObj = departments.find(d => d.name === newDeptName);
+                  setWaterLocForm(prev => ({
+                    ...prev,
+                    department: newDeptName,
+                    departmentId: deptObj?.id || ''
+                  }));
+                }}
+                className="w-full p-2.5 bg-white border border-cyan-300 rounded-lg text-slate-900 font-medium outline-cyan-600"
+              >
+                <option value="">-- Pilih Departemen / Umum Unit --</option>
+                {departments
+                  .filter(d => d.unitName === waterLocForm.unit || d.unitId === waterLocForm.unitId)
+                  .map(d => (
+                    <option key={d.id} value={d.name}>{d.name}</option>
+                  ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Nama Ruangan */}
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">
+              Nama Ruangan / Titik Penempatan *
+            </label>
+            <input
+              type="text"
+              placeholder="Contoh: Ruang Guru &amp; Staff SMP, Laboratorium IPA Kimia, Lobi Perpustakaan"
+              value={waterLocForm.roomName}
+              onChange={(e) => setWaterLocForm({ ...waterLocForm, roomName: e.target.value })}
+              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 outline-cyan-600 font-semibold"
+              required
+            />
+          </div>
+
+          {/* Gedung & Lantai */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Gedung / Sayap Kampus *
+              </label>
+              <input
+                type="text"
+                placeholder="Contoh: Gedung SMP Lazuardi, Gedung Utama"
+                value={waterLocForm.building}
+                onChange={(e) => setWaterLocForm({ ...waterLocForm, building: e.target.value })}
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 outline-cyan-600"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Posisi Lantai *
+              </label>
+              <select
+                value={waterLocForm.floor}
+                onChange={(e) => setWaterLocForm({ ...waterLocForm, floor: e.target.value })}
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 outline-cyan-600 font-medium"
+              >
+                <option value="Lantai 1">Lantai 1 (Dasar)</option>
+                <option value="Lantai 2">Lantai 2</option>
+                <option value="Lantai 3">Lantai 3</option>
+                <option value="Lantai 4">Lantai 4</option>
+                <option value="Basement">Basement / Semi-outdoor</option>
+                <option value="Pos Satpam / Gerbang">Pos Satpam / Gerbang</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Dispenser Config */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+            <div>
+              <label className="block font-bold text-slate-800 mb-1">
+                Jumlah Perangkat Dispenser
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value={waterLocForm.dispenserCount}
+                onChange={(e) => setWaterLocForm({ ...waterLocForm, dispenserCount: Number(e.target.value) })}
+                className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-800 font-bold outline-cyan-600"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-800 mb-1">
+                Merk / Tipe Dispenser
+              </label>
+              <input
+                type="text"
+                placeholder="Contoh: Miyako WDP-300 Hot &amp; Cool, Modena Bottom Loading"
+                value={waterLocForm.dispenserBrand}
+                onChange={(e) => setWaterLocForm({ ...waterLocForm, dispenserBrand: e.target.value })}
+                className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-800 outline-cyan-600"
+              />
+            </div>
+          </div>
+
+          {/* Kuota Galon Aktif & Kosong */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label className="block font-bold text-emerald-900 mb-1">
+                Galon Aktif Terpasang Saat Ini
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="20"
+                value={waterLocForm.activeGallons}
+                onChange={(e) => setWaterLocForm({ ...waterLocForm, activeGallons: Number(e.target.value) })}
+                className="w-full p-2 bg-white border border-emerald-300 rounded-lg text-emerald-950 font-bold outline-cyan-600"
+              />
+              <span className="text-[10px] text-slate-400 mt-1 block">Galon isi terpasang di dispenser</span>
+            </div>
+
+            <div>
+              <label className="block font-bold text-amber-900 mb-1">
+                Galon Kosong Cadangan di Titik
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="20"
+                value={waterLocForm.emptyGallons}
+                onChange={(e) => setWaterLocForm({ ...waterLocForm, emptyGallons: Number(e.target.value) })}
+                className="w-full p-2 bg-white border border-amber-300 rounded-lg text-amber-950 font-bold outline-cyan-600"
+              />
+              <span className="text-[10px] text-slate-400 mt-1 block">Galon kosong yang belum ditarik ke RR</span>
+            </div>
+          </div>
+
+          {/* PIC Ruangan & Catatan */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Penanggung Jawab Ruangan (PIC)
+              </label>
+              <input
+                type="text"
+                placeholder="Contoh: Budi Santoso, M.Pd / Koordinator Lab"
+                value={waterLocForm.picName}
+                onChange={(e) => setWaterLocForm({ ...waterLocForm, picName: e.target.value })}
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 outline-cyan-600"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Catatan Penempatan / Posisi
+              </label>
+              <input
+                type="text"
+                placeholder="Contoh: Dekat pintu samping, stop kontak aman"
+                value={waterLocForm.notes}
+                onChange={(e) => setWaterLocForm({ ...waterLocForm, notes: e.target.value })}
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 outline-cyan-600"
+              />
+            </div>
+          </div>
+
+          {/* Modal Buttons */}
+          <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsWaterLocModalOpen(false)}
+              className="px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-bold rounded-lg cursor-pointer shadow-xs flex items-center gap-1.5"
+            >
+              <Check className="w-4 h-4" />
+              <span>{editingWaterLoc ? 'Simpan Perubahan Titik' : 'Tambahkan Titik Galon'}</span>
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL HAPUS TITIK GALON */}
+      <Modal
+        isOpen={!!deleteWaterLocConfirm}
+        onClose={() => setDeleteWaterLocConfirm(null)}
+        title="Konfirmasi Hapus Titik Penempatan Galon"
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-900 space-y-1">
+            <p className="font-bold text-sm">Apakah Anda yakin ingin menghapus titik galon ini?</p>
+            <p className="text-red-700">
+              Titik galon <strong className="font-bold text-red-950">[{deleteWaterLocConfirm?.code}] {deleteWaterLocConfirm?.roomName}</strong> dari unit <strong className="font-bold text-red-950">{deleteWaterLocConfirm?.unit}</strong> ({deleteWaterLocConfirm?.department || 'Umum'}) akan dihapus dari sistem.
+            </p>
+          </div>
+
+          <p className="text-slate-500 text-[11px]">
+            Tindakan ini akan tercatat dalam audit log sistem.
+          </p>
+
+          <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setDeleteWaterLocConfirm(null)}
+              className="px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmDeleteWaterLoc}
+              className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg cursor-pointer shadow-xs"
+            >
+              Ya, Hapus Titik Galon
             </button>
           </div>
         </div>

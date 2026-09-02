@@ -175,6 +175,7 @@ interface AppContextType {
   // Water
   addWaterLocation: (loc: Omit<WaterLocation, 'id'>) => void;
   updateWaterLocation: (id: string, data: Partial<WaterLocation>) => void;
+  deleteWaterLocation: (id: string) => void;
   updateWaterInventory: (data: Partial<WaterInventory>) => void;
   updateWaterTransaction: (
     requestId: string,
@@ -1375,15 +1376,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Water locations & inventory
   const addWaterLocation = (loc: Omit<WaterLocation, 'id'>) => {
-    const newLoc: WaterLocation = { ...loc, id: `wloc-${Date.now()}` };
+    const unitPrefix = (loc.unit || 'LOC').replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase();
+    const countInUnit = waterLocations.filter(l => l.unit === loc.unit).length + 1;
+    const generatedCode = loc.code || `TG-${unitPrefix}-${countInUnit.toString().padStart(2, '0')}`;
+    
+    const newLoc: WaterLocation = { 
+      ...loc, 
+      id: `wloc-${Date.now()}`,
+      code: generatedCode,
+      status: loc.status || 'Aktif'
+    };
     setWaterLocations(prev => [...prev, newLoc]);
-    addAuditLog('Tambah Lokasi Galon', 'Air Galon', `Lokasi baru: ${loc.roomName} (${loc.unit})`);
-    showToast('success', 'Lokasi Ditambahkan', loc.roomName);
+    addAuditLog('Tambah Lokasi Galon', 'Air Galon', `Titik Galon baru: ${newLoc.code} - ${loc.roomName} (${loc.unit})`);
+    showToast('success', 'Titik Galon Ditambahkan', `${newLoc.code} - ${loc.roomName}`);
   };
 
   const updateWaterLocation = (id: string, data: Partial<WaterLocation>) => {
     setWaterLocations(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
-    showToast('success', 'Lokasi Diperbarui', 'Data dispenser ruangan diperbarui');
+    const target = waterLocations.find(l => l.id === id);
+    addAuditLog('Ubah Lokasi Galon', 'Air Galon', `Memperbarui data titik galon: ${target?.roomName || id}`);
+    showToast('success', 'Titik Galon Diperbarui', 'Data penempatan galon & dispenser telah disimpan');
+  };
+
+  const deleteWaterLocation = (id: string) => {
+    const target = waterLocations.find(l => l.id === id);
+    setWaterLocations(prev => prev.filter(l => l.id !== id));
+    addAuditLog('Hapus Lokasi Galon', 'Air Galon', `Menghapus titik galon ${target?.code || ''} - ${target?.roomName || id}`);
+    showToast('info', 'Titik Galon Dihapus', `${target?.roomName || 'Lokasi'} telah dihapus`);
   };
 
   const updateWaterInventory = (data: Partial<WaterInventory>) => {
@@ -1778,6 +1797,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       processStockOpname,
       addWaterLocation,
       updateWaterLocation,
+      deleteWaterLocation,
       updateWaterInventory,
       updateWaterTransaction,
       addWaterProviderDelivery,
