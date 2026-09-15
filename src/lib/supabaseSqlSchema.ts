@@ -158,6 +158,9 @@ CREATE TABLE IF NOT EXISTS public.service_requests (
   completed_date TEXT,
   picked_up_by TEXT,
   admin_notes TEXT,
+  email_sent_to_head BOOLEAN DEFAULT FALSE,
+  email_sent_date TEXT,
+  email_sent_recipient TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

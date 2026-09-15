@@ -20,8 +20,13 @@ import {
   MasterSupplier, 
   MasterLocation, 
   ServiceType, 
-  RequestStatus 
+  RequestStatus,
+  EmailNotificationLog 
 } from '../types';
+import { 
+  generateOrderCompletionEmail, 
+  saveEmailNotificationLog 
+} from '../services/emailService';
 import { 
   INITIAL_USERS, 
   INITIAL_ROLES, 
@@ -137,6 +142,7 @@ interface AppContextType {
     }
   ) => void;
   deleteRequest: (requestId: string) => void;
+  sendOrderCompletionEmailReport: (requestId: string, recipientOverride?: string) => Promise<{ success: boolean; message: string }>;
   
   // Inventory
   addMasterItem: (item: Omit<MasterItem, 'id' | 'status'>) => void;
@@ -385,40 +391,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           if (remoteUsers && remoteUsers.length > 0) {
             setUsers(prev => {
-              const remoteIds = new Set(remoteUsers.map((u: User) => u.id));
-              const remoteEmails = new Set(remoteUsers.map((u: User) => u.email.toLowerCase().trim()));
-              const localOnly = prev.filter(u => !remoteIds.has(u.id) && !remoteEmails.has(u.email.toLowerCase().trim()));
-              localOnly.forEach(u => upsertToTable('users', transformUserToDB(u)).catch(console.warn));
-              return [...remoteUsers, ...localOnly];
+              const remoteMap = new Map(remoteUsers.map((u: User) => [u.id, u]));
+              const updated = prev.map(localUser => {
+                const remote = remoteMap.get(localUser.id);
+                if (!remote) {
+                  upsertToTable('users', transformUserToDB(localUser)).catch(console.warn);
+                  return localUser;
+                }
+                remoteMap.delete(localUser.id);
+                return remote;
+              });
+              const remainingRemote = Array.from(remoteMap.values());
+              return [...updated, ...remainingRemote];
             });
           }
 
           if (remoteItems && remoteItems.length > 0) {
             setItems(prev => {
-              const remoteIds = new Set(remoteItems.map((i: MasterItem) => i.id));
-              const remoteCodes = new Set(remoteItems.map((i: MasterItem) => i.code.toLowerCase().trim()));
-              const localOnly = prev.filter(i => !remoteIds.has(i.id) && !remoteCodes.has(i.code.toLowerCase().trim()));
-              localOnly.forEach(i => upsertToTable('master_items', transformItemToDB(i)).catch(console.warn));
-              return [...remoteItems, ...localOnly];
+              const remoteMap = new Map(remoteItems.map((i: MasterItem) => [i.id, i]));
+              const updated = prev.map(localItem => {
+                const remote = remoteMap.get(localItem.id);
+                if (!remote) {
+                  upsertToTable('master_items', transformItemToDB(localItem)).catch(console.warn);
+                  return localItem;
+                }
+                remoteMap.delete(localItem.id);
+                return remote;
+              });
+              const remainingRemote = Array.from(remoteMap.values());
+              return [...updated, ...remainingRemote];
             });
           }
 
           if (remoteUniforms && remoteUniforms.length > 0) {
             setUniforms(prev => {
-              const remoteIds = new Set(remoteUniforms.map((u: UniformItem) => u.id));
-              const remoteCodes = new Set(remoteUniforms.map((u: UniformItem) => u.code.toLowerCase().trim()));
-              const localOnly = prev.filter(u => !remoteIds.has(u.id) && !remoteCodes.has(u.code.toLowerCase().trim()));
-              localOnly.forEach(u => upsertToTable('uniform_items', transformUniformToDB(u)).catch(console.warn));
-              return [...remoteUniforms, ...localOnly];
+              const remoteMap = new Map(remoteUniforms.map((u: UniformItem) => [u.id, u]));
+              const updated = prev.map(localUni => {
+                const remote = remoteMap.get(localUni.id);
+                if (!remote) {
+                  upsertToTable('uniform_items', transformUniformToDB(localUni)).catch(console.warn);
+                  return localUni;
+                }
+                remoteMap.delete(localUni.id);
+                return remote;
+              });
+              const remainingRemote = Array.from(remoteMap.values());
+              return [...updated, ...remainingRemote];
             });
           }
 
           if (remoteWaterLocs && remoteWaterLocs.length > 0) {
             setWaterLocations(prev => {
-              const remoteIds = new Set(remoteWaterLocs.map((w: WaterLocation) => w.id));
-              const localOnly = prev.filter(w => !remoteIds.has(w.id));
-              localOnly.forEach(w => upsertToTable('water_locations', transformWaterLocationToDB(w)).catch(console.warn));
-              return [...remoteWaterLocs, ...localOnly];
+              const remoteMap = new Map(remoteWaterLocs.map((w: WaterLocation) => [w.id, w]));
+              const updated = prev.map(localLoc => {
+                const remote = remoteMap.get(localLoc.id);
+                if (!remote) {
+                  upsertToTable('water_locations', transformWaterLocationToDB(localLoc)).catch(console.warn);
+                  return localLoc;
+                }
+                remoteMap.delete(localLoc.id);
+                return remote;
+              });
+              const remainingRemote = Array.from(remoteMap.values());
+              return [...updated, ...remainingRemote];
             });
           }
 
@@ -436,56 +471,109 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           if (remoteRequests && remoteRequests.length > 0) {
             setRequests(prev => {
-              const remoteIds = new Set(remoteRequests.map((r: ServiceRequest) => r.id));
-              const localOnly = prev.filter(r => !remoteIds.has(r.id));
-              localOnly.forEach(r => upsertToTable('service_requests', transformRequestToDB(r)).catch(console.warn));
-              return [...localOnly, ...remoteRequests];
+              const remoteMap = new Map(remoteRequests.map((r: ServiceRequest) => [r.id, r]));
+              // If local request has progressed status (e.g. Selesai, Disetujui) or was completed,
+              // don't let a stale remote Diajukan request overwrite it!
+              const updated = prev.map(localReq => {
+                const remoteReq = remoteMap.get(localReq.id);
+                if (!remoteReq) {
+                  upsertToTable('service_requests', transformRequestToDB(localReq)).catch(console.warn);
+                  return localReq;
+                }
+                remoteMap.delete(localReq.id);
+                if (localReq.status !== 'Diajukan' && remoteReq.status === 'Diajukan') {
+                  upsertToTable('service_requests', transformRequestToDB(localReq)).catch(console.warn);
+                  return localReq;
+                }
+                return remoteReq;
+              });
+              const remainingRemote = Array.from(remoteMap.values());
+              return [...remainingRemote, ...updated];
             });
           }
 
           if (remoteTrx && remoteTrx.length > 0) {
             setStockTransactions(prev => {
-              const remoteIds = new Set(remoteTrx.map((t: StockTransaction) => t.id));
-              const localOnly = prev.filter(t => !remoteIds.has(t.id));
-              localOnly.forEach(t => upsertToTable('stock_transactions', transformStockTransactionToDB(t)).catch(console.warn));
-              return [...localOnly, ...remoteTrx];
+              const remoteMap = new Map(remoteTrx.map((t: StockTransaction) => [t.id, t]));
+              const updated = prev.map(localTrx => {
+                const remote = remoteMap.get(localTrx.id);
+                if (!remote) {
+                  upsertToTable('stock_transactions', transformStockTransactionToDB(localTrx)).catch(console.warn);
+                  return localTrx;
+                }
+                remoteMap.delete(localTrx.id);
+                return remote;
+              });
+              const remainingRemote = Array.from(remoteMap.values());
+              return [...remainingRemote, ...updated];
             });
           }
 
           if (remoteUnits && remoteUnits.length > 0) {
             setUnits(prev => {
-              const remoteIds = new Set(remoteUnits.map((u: MasterUnit) => u.id));
-              const remoteCodes = new Set(remoteUnits.map((u: MasterUnit) => u.code.toLowerCase().trim()));
-              const localOnly = prev.filter(u => !remoteIds.has(u.id) && !remoteCodes.has(u.code.toLowerCase().trim()));
-              localOnly.forEach(u => upsertToTable('master_units', transformUnitToDB(u)).catch(console.warn));
-              return [...remoteUnits, ...localOnly];
+              const remoteMap = new Map(remoteUnits.map((u: MasterUnit) => [u.id, u]));
+              const updated = prev.map(localUnit => {
+                const remote = remoteMap.get(localUnit.id);
+                if (!remote) {
+                  upsertToTable('master_units', transformUnitToDB(localUnit)).catch(console.warn);
+                  return localUnit;
+                }
+                remoteMap.delete(localUnit.id);
+                return remote;
+              });
+              const remainingRemote = Array.from(remoteMap.values());
+              return [...updated, ...remainingRemote];
             });
           }
 
           if (remoteDepts && remoteDepts.length > 0) {
             setDepartments(prev => {
-              const remoteIds = new Set(remoteDepts.map((d: MasterDepartment) => d.id));
-              const localOnly = prev.filter(d => !remoteIds.has(d.id));
-              localOnly.forEach(d => upsertToTable('master_departments', transformDeptToDB(d)).catch(console.warn));
-              return [...remoteDepts, ...localOnly];
+              const remoteMap = new Map(remoteDepts.map((d: MasterDepartment) => [d.id, d]));
+              const updated = prev.map(localDept => {
+                const remote = remoteMap.get(localDept.id);
+                if (!remote) {
+                  upsertToTable('master_departments', transformDeptToDB(localDept)).catch(console.warn);
+                  return localDept;
+                }
+                remoteMap.delete(localDept.id);
+                return remote;
+              });
+              const remainingRemote = Array.from(remoteMap.values());
+              return [...updated, ...remainingRemote];
             });
           }
 
           if (remoteSuppliers && remoteSuppliers.length > 0) {
             setSuppliers(prev => {
-              const remoteIds = new Set(remoteSuppliers.map((s: MasterSupplier) => s.id));
-              const localOnly = prev.filter(s => !remoteIds.has(s.id));
-              localOnly.forEach(s => upsertToTable('master_suppliers', transformSupplierToDB(s)).catch(console.warn));
-              return [...remoteSuppliers, ...localOnly];
+              const remoteMap = new Map(remoteSuppliers.map((s: MasterSupplier) => [s.id, s]));
+              const updated = prev.map(localSup => {
+                const remote = remoteMap.get(localSup.id);
+                if (!remote) {
+                  upsertToTable('master_suppliers', transformSupplierToDB(localSup)).catch(console.warn);
+                  return localSup;
+                }
+                remoteMap.delete(localSup.id);
+                return remote;
+              });
+              const remainingRemote = Array.from(remoteMap.values());
+              return [...updated, ...remainingRemote];
             });
           }
 
           if (remoteLocations && remoteLocations.length > 0) {
             setLocations(prev => {
-              const remoteIds = new Set(remoteLocations.map((l: MasterLocation) => l.id));
-              const localOnly = prev.filter(l => !remoteIds.has(l.id));
-              localOnly.forEach(l => upsertToTable('master_locations', transformLocationToDB(l)).catch(console.warn));
-              return [...remoteLocations, ...localOnly];
+              const remoteMap = new Map(remoteLocations.map((l: MasterLocation) => [l.id, l]));
+              const updated = prev.map(localLoc => {
+                const remote = remoteMap.get(localLoc.id);
+                if (!remote) {
+                  upsertToTable('master_locations', transformLocationToDB(localLoc)).catch(console.warn);
+                  return localLoc;
+                }
+                remoteMap.delete(localLoc.id);
+                return remote;
+              });
+              const remainingRemote = Array.from(remoteMap.values());
+              return [...updated, ...remainingRemote];
             });
           }
 
@@ -1052,6 +1140,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedReq.processedBy = currentUser?.name || 'Admin Resources Room';
       updatedReq.pickedUpBy = extraData?.pickedUpBy || req.userName;
 
+      // Find unit head for email report
+      const unitObj = units.find(
+        u => u.code.toLowerCase() === req.unit.toLowerCase() || 
+             u.name.toLowerCase().includes(req.unit.toLowerCase())
+      );
+      const headName = unitObj?.headName || 'Kepala Unit';
+      const headEmail = unitObj?.email || `${req.unit.toLowerCase()}@lazuardi.sch.id`;
+
+      updatedReq.emailSentToHead = true;
+      updatedReq.emailSentDate = new Date().toISOString();
+      updatedReq.emailSentRecipient = headEmail;
+
       // AUTOMATIC STOCK DEDUCTION IF MOVING TO 'Selesai'
       if (prevStatus !== 'Selesai') {
         if (req.serviceType === 'atk' || req.serviceType === 'seragam') {
@@ -1192,7 +1292,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isRead: false,
       timestamp: new Date().toISOString()
     };
-    setNotifications(prev => [userNotif, ...prev]);
+
+    const newNotifs: AppNotification[] = [userNotif];
+
+    if (status === 'Selesai') {
+      const unitObj = units.find(
+        u => u.code.toLowerCase() === req.unit.toLowerCase() || 
+             u.name.toLowerCase().includes(req.unit.toLowerCase())
+      );
+      const headName = unitObj?.headName || 'Kepala Unit';
+      const headEmail = unitObj?.email || `${req.unit.toLowerCase()}@lazuardi.sch.id`;
+
+      // Generate email report and record log
+      const emailReport = generateOrderCompletionEmail(updatedReq, unitObj, currentUser?.name);
+      const emailLog: EmailNotificationLog = {
+        id: `elog-${Date.now()}`,
+        requestId: req.id,
+        requestNumber: req.requestNumber,
+        serviceType: req.serviceType,
+        unit: req.unit,
+        recipientEmail: headEmail,
+        recipientName: headName,
+        subject: emailReport.subject,
+        sentAt: new Date().toISOString(),
+        sentBy: currentUser?.name || 'Admin Resources Room',
+        method: 'system',
+        status: 'Terkirim',
+        bodyPreview: emailReport.plainBody.slice(0, 160) + '...'
+      };
+      saveEmailNotificationLog(emailLog);
+
+      newNotifs.unshift({
+        id: `notif-email-${Date.now() + 1}`,
+        title: `[Laporan Email Selesai] ${req.requestNumber} (${req.unit})`,
+        message: `Laporan resmi penyelesaian order telah diterbitkan & dikirimkan ke Kepala Unit ${headName} (${headEmail}). Arsip serah terima tersimpan.`,
+        type: 'success',
+        serviceType: req.serviceType,
+        requestId: req.id,
+        isRead: false,
+        timestamp: new Date().toISOString()
+      });
+
+      addAuditLog(
+        'Kirim Laporan Email Kepala Unit',
+        req.serviceType.toUpperCase(),
+        `Laporan penyelesaian order ${req.requestNumber} (${req.userName}) dikirimkan ke Kepala Unit ${headName} (${headEmail})`
+      );
+    }
+
+    setNotifications(prev => [...newNotifs, ...prev]);
 
     addAuditLog(
       'Update Status Permintaan',
@@ -1200,7 +1348,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Mengubah status ${req.requestNumber} dari "${prevStatus}" ke "${status}"`
     );
 
-    showToast('info', 'Status Diperbarui', `${req.requestNumber} sekarang berstatus ${status}`);
+    if (status === 'Selesai') {
+      const unitObj = units.find(
+        u => u.code.toLowerCase() === req.unit.toLowerCase() || 
+             u.name.toLowerCase().includes(req.unit.toLowerCase())
+      );
+      const headName = unitObj?.headName || 'Kepala Unit';
+      const headEmail = unitObj?.email || `${req.unit.toLowerCase()}@lazuardi.sch.id`;
+      showToast('success', 'Order Selesai & Laporan Email Terkirim', `${req.requestNumber} telah selesai. Laporan telah dikirimkan ke Kepala Unit ${headName} (${headEmail})`);
+    } else {
+      showToast('info', 'Status Diperbarui', `${req.requestNumber} sekarang berstatus ${status}`);
+    }
+  };
+
+  const sendOrderCompletionEmailReport = async (
+    requestId: string, 
+    recipientOverride?: string
+  ): Promise<{ success: boolean; message: string }> => {
+    const req = requests.find(r => r.id === requestId);
+    if (!req) return { success: false, message: 'Data order tidak ditemukan' };
+
+    const unitObj = units.find(
+      u => u.code.toLowerCase() === req.unit.toLowerCase() || 
+           u.name.toLowerCase().includes(req.unit.toLowerCase())
+    );
+    const headName = unitObj?.headName || 'Kepala Unit';
+    const targetEmail = (recipientOverride || unitObj?.email || `${req.unit.toLowerCase()}@lazuardi.sch.id`).trim();
+
+    const emailReport = generateOrderCompletionEmail(req, unitObj, currentUser?.name);
+    if (recipientOverride) {
+      emailReport.to = targetEmail;
+      emailReport.toName = `${headName} (${targetEmail})`;
+    }
+
+    const emailLog: EmailNotificationLog = {
+      id: `elog-${Date.now()}`,
+      requestId: req.id,
+      requestNumber: req.requestNumber,
+      serviceType: req.serviceType,
+      unit: req.unit,
+      recipientEmail: targetEmail,
+      recipientName: headName,
+      subject: emailReport.subject,
+      sentAt: new Date().toISOString(),
+      sentBy: currentUser?.name || 'Admin Resources Room',
+      method: 'direct',
+      status: 'Terkirim',
+      bodyPreview: emailReport.plainBody.slice(0, 160) + '...'
+    };
+    saveEmailNotificationLog(emailLog);
+
+    const updatedReq: ServiceRequest = {
+      ...req,
+      emailSentToHead: true,
+      emailSentDate: new Date().toISOString(),
+      emailSentRecipient: targetEmail
+    };
+
+    setRequests(prev => prev.map(r => r.id === requestId ? updatedReq : r));
+    upsertToTable('service_requests', transformRequestToDB(updatedReq)).catch(console.warn);
+
+    setNotifications(prev => [{
+      id: `notif-email-${Date.now()}`,
+      title: `[Laporan Email Terkirim] ${req.requestNumber} (${req.unit})`,
+      message: `Laporan resmi penyelesaian order dikirim ulang ke Kepala Unit ${headName} (${targetEmail}).`,
+      type: 'success',
+      serviceType: req.serviceType,
+      requestId: req.id,
+      isRead: false,
+      timestamp: new Date().toISOString()
+    }, ...prev]);
+
+    addAuditLog(
+      'Kirim Ulang Laporan Email',
+      req.serviceType.toUpperCase(),
+      `Kirim ulang laporan order ${req.requestNumber} ke Kepala Unit ${headName} (${targetEmail})`
+    );
+
+    showToast('success', 'Laporan Email Dikirim', `Laporan ${req.requestNumber} berhasil dikirim ke ${targetEmail}`);
+    return { success: true, message: `Laporan berhasil dikirim ke ${targetEmail}` };
   };
 
   const deleteRequest = (requestId: string) => {
@@ -2033,6 +2259,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createRequest,
       updateRequestStatus,
       deleteRequest,
+      sendOrderCompletionEmailReport,
       addMasterItem,
       updateMasterItem,
       deleteMasterItem,

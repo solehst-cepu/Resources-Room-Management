@@ -199,6 +199,9 @@ export const transformRequestToDB = (r: ServiceRequest) => ({
   completed_date: r.completedDate || null,
   picked_up_by: r.pickedUpBy || null,
   admin_notes: r.adminNotes || null,
+  email_sent_to_head: Boolean(r.emailSentToHead),
+  email_sent_date: r.emailSentDate || null,
+  email_sent_recipient: r.emailSentRecipient || null,
 });
 
 export const transformRequestFromDB = (row: any): ServiceRequest => ({
@@ -226,6 +229,9 @@ export const transformRequestFromDB = (row: any): ServiceRequest => ({
   completedDate: row.completed_date || undefined,
   pickedUpBy: row.picked_up_by || undefined,
   adminNotes: row.admin_notes || undefined,
+  emailSentToHead: Boolean(row.email_sent_to_head),
+  emailSentDate: row.email_sent_date || undefined,
+  emailSentRecipient: row.email_sent_recipient || undefined,
 });
 
 export const transformStockTransactionToDB = (st: StockTransaction) => ({

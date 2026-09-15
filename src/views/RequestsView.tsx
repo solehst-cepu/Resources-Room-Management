@@ -20,11 +20,13 @@ import {
   Sparkles,
   Trash2,
   AlertTriangle,
-  Compass
+  Compass,
+  Mail
 } from 'lucide-react';
 import { StatusBadge, UrgencyBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { TrackOrderModal } from '../components/common/TrackOrderModal';
+import { EmailReportModal } from '../components/common/EmailReportModal';
 
 interface RequestsViewProps {
   filterStatus?: string;
@@ -67,6 +69,10 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
   // Live Order Tracking Modal (for Photocopy & Laminating)
   const [trackingRequest, setTrackingRequest] = useState<ServiceRequest | null>(null);
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
+
+  // Email Report Modal to Kepala Unit
+  const [emailModalRequest, setEmailModalRequest] = useState<ServiceRequest | null>(null);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
   const canManageOrDelete = currentUser?.role === 'super_admin' || currentUser?.role === 'admin_rr';
 
@@ -361,6 +367,24 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                         Slip
                       </button>
 
+                      {req.status === 'Selesai' && (
+                        <button
+                          onClick={() => {
+                            setEmailModalRequest(req);
+                            setIsEmailModalOpen(true);
+                          }}
+                          className={`px-2.5 py-1 text-xs font-bold rounded-md transition-colors cursor-pointer inline-flex items-center gap-1 border ${
+                            req.emailSentToHead
+                              ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                              : 'bg-teal-700 hover:bg-teal-800 text-white border-teal-700'
+                          }`}
+                          title={req.emailSentToHead ? `Laporan telah terkirim ke Kepala Unit (${req.emailSentRecipient || ''})` : 'Kirim Laporan Email ke Kepala Unit'}
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                          <span>Email</span>
+                        </button>
+                      )}
+
                       {canManageOrDelete && req.status !== 'Selesai' && req.status !== 'Ditolak' && (
                         <button
                           onClick={() => handleOpenActionModal(req)}
@@ -533,6 +557,36 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
               </div>
             )}
 
+            {/* Email Status Box for Selesai */}
+            {activeDetailRequest.status === 'Selesai' && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-emerald-950 block text-xs">Pemberitahuan Email Kepala Unit</span>
+                    <span className="text-emerald-800 text-[11px] block">
+                      {activeDetailRequest.emailSentToHead 
+                        ? `Laporan resmi terkirim ke ${activeDetailRequest.emailSentRecipient || 'Kepala Unit'} (${activeDetailRequest.emailSentDate ? new Date(activeDetailRequest.emailSentDate).toLocaleTimeString('id-ID') : 'Terkirim'})` 
+                        : 'Laporan penyelesaian order siap diterbitkan dan dikirimkan'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailModalRequest(activeDetailRequest);
+                    setIsEmailModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  <span>{activeDetailRequest.emailSentToHead ? 'Buka / Kirim Ulang' : 'Kirim Email'}</span>
+                </button>
+              </div>
+            )}
+
             <div className="pt-3 border-t border-slate-200 flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <button
@@ -545,6 +599,21 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                   <Printer className="w-4 h-4" />
                   <span>Cetak SPK / Tanda Terima</span>
                 </button>
+
+                {activeDetailRequest.status === 'Selesai' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmailModalRequest(activeDetailRequest);
+                      setIsEmailModalOpen(true);
+                    }}
+                    className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="Buka laporan email untuk Kepala Unit"
+                  >
+                    <Mail className="w-4 h-4" />
+                    <span>Laporan Email Kepala Unit</span>
+                  </button>
+                )}
 
                 {canManageOrDelete && activeDetailRequest.status !== 'Selesai' && activeDetailRequest.status !== 'Ditolak' && (
                   <button
@@ -696,6 +765,14 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                     const recipient = actionPickedUpBy.trim() || selectedActionRequest.userName || 'Pemohon';
                     updateRequestStatus(selectedActionRequest.id, 'Selesai', { pickedUpBy: recipient });
                     setIsActionModalOpen(false);
+                    // Automatically open the email report modal for review and dispatch
+                    setEmailModalRequest({
+                      ...selectedActionRequest,
+                      status: 'Selesai',
+                      pickedUpBy: recipient,
+                      completedDate: new Date().toISOString()
+                    });
+                    setIsEmailModalOpen(true);
                   }}
                   className={`p-2.5 rounded-lg border text-left text-xs font-semibold cursor-pointer transition-colors ${
                     selectedActionRequest.status === 'Selesai' ? 'bg-emerald-700 text-white border-emerald-700' : 'border-slate-200 hover:border-emerald-600 hover:bg-emerald-50 text-slate-700'
@@ -703,9 +780,9 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                 >
                   <div className="flex items-center gap-1.5 font-bold mb-0.5">
                     <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>4. Selesai</span>
+                    <span>4. Selesai & Kirim Email</span>
                   </div>
-                  <span className="text-[10px] opacity-80 block">Diserahkan ke pemohon</span>
+                  <span className="text-[10px] opacity-80 block">Diserahkan & Lapor ke Kepala Unit</span>
                 </button>
               </div>
 
@@ -895,6 +972,16 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
         }}
         request={trackingRequest}
         onOpenReceipt={onOpenReceipt}
+      />
+
+      {/* EMAIL REPORT TO KEPALA UNIT MODAL */}
+      <EmailReportModal
+        isOpen={isEmailModalOpen}
+        onClose={() => {
+          setIsEmailModalOpen(false);
+          setEmailModalRequest(null);
+        }}
+        request={emailModalRequest}
       />
 
     </div>

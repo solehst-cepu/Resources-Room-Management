@@ -38,16 +38,18 @@ import {
   Zap,
   ArrowRight,
   Cloud,
-  CheckCircle
+  CheckCircle,
+  Mail
 } from 'lucide-react';
 import { RoleBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { UserImportModal } from '../components/UserImportModal';
+import { EmailNotificationLogsTab } from '../components/common/EmailNotificationLogsTab';
 import { SUPABASE_CONFIG_SCHEMA_SQL } from '../lib/supabaseSqlSchema';
 import { PROJECT_METADATA } from '../lib/supabase';
 
 interface SettingsViewProps {
-  initialTab?: 'roles' | 'users' | 'units' | 'galon' | 'database' | 'system';
+  initialTab?: 'roles' | 'users' | 'units' | 'galon' | 'database' | 'system' | 'email_logs';
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles' }) => {
@@ -90,7 +92,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     showToast
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'roles' | 'users' | 'units' | 'galon' | 'database' | 'system'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'roles' | 'users' | 'units' | 'galon' | 'database' | 'system' | 'email_logs'>(initialTab);
   const [copiedSql, setCopiedSql] = useState(false);
   const [showSqlViewer, setShowSqlViewer] = useState(false);
 
@@ -869,6 +871,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
         >
           <Droplet className="w-4 h-4 text-cyan-400" />
           <span>Master Galon &amp; Stock Opname</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('email_logs')}
+          className={`px-3.5 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'email_logs' ? 'bg-teal-700 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <Mail className="w-4 h-4 text-teal-300" />
+          <span>Laporan Email Kepala Unit</span>
         </button>
 
         <button
@@ -2432,6 +2444,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
         </div>
       )}
 
+      {/* TAB: LAPORAN EMAIL RESMI KEPALA UNIT */}
+      {activeTab === 'email_logs' && (
+        <EmailNotificationLogsTab />
+      )}
+
       {/* USER MODAL */}
       <Modal
         isOpen={isUserModalOpen}
@@ -2756,7 +2773,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Email Resmi Unit</label>
+              <label className="block font-bold text-slate-700 mb-1">Email Resmi Unit / Kepala Unit *</label>
               <input
                 type="email"
                 placeholder="Contoh: smp@lazuardi.sch.id"
@@ -2764,6 +2781,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
                 onChange={(e) => setUnitForm({ ...unitForm, email: e.target.value })}
                 className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              <span className="text-[10px] text-slate-500 mt-1 block">
+                📧 Laporan penyelesaian order otomatis dikirimkan ke alamat email Kepala Unit ini.
+              </span>
             </div>
           </div>
 

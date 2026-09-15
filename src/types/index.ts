@@ -249,6 +249,9 @@ export interface ServiceRequest {
   completedDate?: string;
   pickedUpBy?: string;
   adminNotes?: string;
+  emailSentToHead?: boolean;
+  emailSentDate?: string;
+  emailSentRecipient?: string;
 }
 
 export type StockTransactionType = 'IN' | 'OUT' | 'OPNAME';
@@ -328,4 +331,34 @@ export interface MasterLocation {
   name: string;
   zone: string;
   description: string;
+}
+
+export interface EmailReportData {
+  to: string;
+  toName: string;
+  cc: string;
+  bcc?: string;
+  subject: string;
+  plainBody: string;
+  htmlBody: string;
+  requestNumber: string;
+  unitName: string;
+  serviceType: ServiceType;
+  completedDate: string;
+}
+
+export interface EmailNotificationLog {
+  id: string;
+  requestId: string;
+  requestNumber: string;
+  serviceType: ServiceType;
+  unit: string;
+  recipientEmail: string;
+  recipientName: string;
+  subject: string;
+  sentAt: string;
+  sentBy: string;
+  method: 'gmail' | 'mailto' | 'direct' | 'system';
+  status: 'Terkirim' | 'Menunggu' | 'Gagal';
+  bodyPreview?: string;
 }
