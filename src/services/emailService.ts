@@ -1,4 +1,161 @@
-import { ServiceRequest, MasterUnit, EmailReportData, EmailNotificationLog, ServiceType } from '../types';
+import { ServiceRequest, MasterUnit, EmailReportData, EmailNotificationLog, ServiceType, User } from '../types';
+
+export interface RegisteredEmailOption {
+  email: string;
+  name: string;
+  roleOrTitle: string;
+  source: 'manager_user' | 'unit_head' | 'unit_official' | 'custom';
+  isRecommended?: boolean;
+}
+
+export interface UnitHeadResolution {
+  unitCode: string;
+  unitName: string;
+  headName: string;
+  primaryEmail: string;
+  options: RegisteredEmailOption[];
+  matchedUnit?: MasterUnit;
+  matchedManagerUser?: User;
+}
+
+/**
+ * Accurately resolves the official registered email and name of the Unit Head / Pimpinan Unit
+ * by cross-referencing Master Unit settings and Registered User accounts (Manager role).
+ */
+export const resolveUnitHeadInfo = (
+  unitIdentifier: string,
+  units: MasterUnit[] = [],
+  users: User[] = []
+): UnitHeadResolution => {
+  const norm = (unitIdentifier || '').trim().toLowerCase();
+
+  // 1. Find matching MasterUnit
+  const matchedUnit = units.find(u => {
+    const code = u.code.toLowerCase().trim();
+    const name = u.name.toLowerCase().trim();
+    if (code === norm || name === norm) return true;
+    if (norm === 'general affairs' && (code === 'ga' || name.includes('general affairs'))) return true;
+    if (norm === 'ga' && (code === 'ga' || name.includes('general affairs'))) return true;
+    if (norm === 'management' && (code === 'mgt' || name.includes('management') || name.includes('yayasan'))) return true;
+    if (norm === 'resources' && (code === 'rr' || name.includes('resources'))) return true;
+    if (code && code.length >= 2 && norm.includes(code)) return true;
+    if (name && (norm.includes(name) || name.includes(norm))) return true;
+    return false;
+  });
+
+  const unitCode = matchedUnit?.code || unitIdentifier.toUpperCase().trim();
+  const unitName = matchedUnit?.name || `Unit ${unitIdentifier}`;
+
+  // 2. Find matching Manager / Pimpinan User in registered users list
+  const matchingManagers = users.filter(u => {
+    const uUnit = (u.unit || '').toLowerCase().trim();
+    const uDept = (u.department || '').toLowerCase().trim();
+    const isUnitMatch = 
+      uUnit === norm || 
+      (matchedUnit && (
+        uUnit === matchedUnit.code.toLowerCase().trim() || 
+        uUnit === matchedUnit.name.toLowerCase().trim() ||
+        (matchedUnit.code.toLowerCase() === 'ga' && uUnit.includes('general'))
+      )) ||
+      norm.includes(uUnit) ||
+      uUnit.includes(norm);
+
+    const isHeadByName = Boolean(matchedUnit?.headName && u.name.toLowerCase().trim() === matchedUnit.headName.toLowerCase().trim());
+    const isManagerRole = u.role === 'manager';
+    const isHeadInDept = uDept.includes('kepala') || uDept.includes('pimpinan') || uDept.includes('direktur') || uDept.includes('pembina');
+
+    return isHeadByName || (isUnitMatch && (isManagerRole || isHeadInDept));
+  });
+
+  // Pick best matched manager user
+  const matchedManagerUser = matchingManagers.find(u => u.role === 'manager') || matchingManagers[0];
+
+  // 3. Collect registered email options with deduplication
+  const options: RegisteredEmailOption[] = [];
+  const seenEmails = new Set<string>();
+
+  const addOption = (opt: RegisteredEmailOption) => {
+    const cleanEmail = opt.email.toLowerCase().trim();
+    if (cleanEmail && cleanEmail.includes('@') && !seenEmails.has(cleanEmail)) {
+      seenEmails.add(cleanEmail);
+      options.push({ ...opt, email: cleanEmail });
+    }
+  };
+
+  // Option A: Registered Manager User Account (e.g. Dra. Hj. Nurul Hidayah -> nurul.manager@lazuardi.sch.id)
+  if (matchedManagerUser && matchedManagerUser.email) {
+    addOption({
+      email: matchedManagerUser.email,
+      name: matchedManagerUser.name,
+      roleOrTitle: matchedManagerUser.department || `Pimpinan/Kepala Unit ${unitName}`,
+      source: 'manager_user',
+      isRecommended: true
+    });
+  }
+
+  // Also include any other managers registered for this unit
+  matchingManagers.forEach(mgr => {
+    if (mgr.id !== matchedManagerUser?.id && mgr.email) {
+      addOption({
+        email: mgr.email,
+        name: mgr.name,
+        roleOrTitle: mgr.department || `Pimpinan ${unitName}`,
+        source: 'manager_user'
+      });
+    }
+  });
+
+  // Option B: Registered Email from Master Unit Table
+  if (matchedUnit?.email) {
+    addOption({
+      email: matchedUnit.email,
+      name: matchedUnit.headName || `Kepala Unit ${unitName}`,
+      roleOrTitle: `Email Resmi Unit Terdaftar (${matchedUnit.code} - ${matchedUnit.name})`,
+      source: 'unit_head',
+      isRecommended: options.length === 0
+    });
+  }
+
+  // Option C: Any user account whose name matches matchedUnit.headName
+  if (matchedUnit?.headName) {
+    const userWithSameName = users.find(u => u.name.toLowerCase().trim() === matchedUnit.headName?.toLowerCase().trim());
+    if (userWithSameName && userWithSameName.email) {
+      addOption({
+        email: userWithSameName.email,
+        name: userWithSameName.name,
+        roleOrTitle: userWithSameName.department || `Pimpinan ${unitName}`,
+        source: 'manager_user'
+      });
+    }
+  }
+
+  // Option D: Clean school domain fallback (no spaces or invalid chars)
+  const safeCode = unitCode.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const fallbackEmail = `${safeCode || 'unit'}@lazuardi.sch.id`;
+
+  if (options.length === 0) {
+    options.push({
+      email: fallbackEmail,
+      name: matchedUnit?.headName || 'Kepala Unit',
+      roleOrTitle: `Email Default Sistem (${unitCode})`,
+      source: 'unit_official',
+      isRecommended: true
+    });
+  }
+
+  const primaryEmail = options[0].email;
+  const headName = matchedManagerUser?.name || matchedUnit?.headName || 'Kepala Unit';
+
+  return {
+    unitCode,
+    unitName,
+    headName,
+    primaryEmail,
+    options,
+    matchedUnit,
+    matchedManagerUser
+  };
+};
 
 export const formatServiceTypeLabel = (type: ServiceType): string => {
   switch (type) {
@@ -20,12 +177,17 @@ export const formatServiceTypeLabel = (type: ServiceType): string => {
 export const generateOrderCompletionEmail = (
   request: ServiceRequest,
   unitObj?: MasterUnit,
-  operatorName?: string
+  operatorName?: string,
+  users: User[] = [],
+  customRecipient?: { email?: string; name?: string; cc?: string }
 ): EmailReportData => {
-  const unitName = unitObj?.name || `Unit ${request.unit}`;
-  const headName = unitObj?.headName || 'Kepala Unit';
-  const headEmail = unitObj?.email || `${request.unit.toLowerCase()}@lazuardi.sch.id`;
-  const ccEmails = [request.userEmail, 'resources.room@lazuardi.sch.id'].filter(Boolean).join(', ');
+  // Resolve accurate registered head info
+  const resolution = resolveUnitHeadInfo(request.unit, unitObj ? [unitObj] : [], users);
+
+  const unitName = unitObj?.name || resolution.unitName;
+  const headName = customRecipient?.name || resolution.headName || unitObj?.headName || 'Kepala Unit';
+  const headEmail = customRecipient?.email || resolution.primaryEmail;
+  const ccEmails = customRecipient?.cc ?? [request.userEmail, 'resources.room@lazuardi.sch.id'].filter(Boolean).join(', ');
 
   const formattedRequestDate = new Date(request.requestDate).toLocaleDateString('id-ID', {
     weekday: 'long',

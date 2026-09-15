@@ -223,21 +223,86 @@ export const INITIAL_USERS: User[] = [
     phone: '0878-9900-1122',
     avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
     status: 'active'
+  },
+  {
+    id: 'usr-7',
+    name: 'Ratna Sari, S.Pd',
+    email: 'ratna.tk@lazuardi.sch.id',
+    username: 'ratna.tk',
+    password: 'password123',
+    role: 'manager',
+    unit: 'TK',
+    department: 'Kepala Sekolah TK Lazuardi',
+    phone: '0812-7788-9911',
+    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+    status: 'active'
+  },
+  {
+    id: 'usr-8',
+    name: 'Drs. H. Mulyadi',
+    email: 'mulyadi.sd@lazuardi.sch.id',
+    username: 'mulyadi.sd',
+    password: 'password123',
+    role: 'manager',
+    unit: 'SD',
+    department: 'Kepala Sekolah SD Lazuardi',
+    phone: '0813-8899-0022',
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
+    status: 'active'
+  },
+  {
+    id: 'usr-9',
+    name: 'Ir. Taufik Ismail, M.M',
+    email: 'taufik.sma@lazuardi.sch.id',
+    username: 'taufik.sma',
+    password: 'password123',
+    role: 'manager',
+    unit: 'SMA',
+    department: 'Kepala Sekolah SMA Lazuardi',
+    phone: '0815-6677-8899',
+    avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80',
+    status: 'active'
+  },
+  {
+    id: 'usr-10',
+    name: 'Bambang Irawan',
+    email: 'bambang.ga@lazuardi.sch.id',
+    username: 'bambang.ga',
+    password: 'password123',
+    role: 'manager',
+    unit: 'General Affairs',
+    department: 'Kepala Bagian Sarpras & GA',
+    phone: '0818-5544-3322',
+    avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80',
+    status: 'active'
+  },
+  {
+    id: 'usr-11',
+    name: 'Dr. Haidar Bagir',
+    email: 'haidar.bagir@lazuardi.sch.id',
+    username: 'haidar.bagir',
+    password: 'password123',
+    role: 'manager',
+    unit: 'Management',
+    department: 'Ketua Pembina Yayasan Lazuardi',
+    phone: '0811-1234-5678',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    status: 'active'
   }
 ];
 
 export const INITIAL_UNITS: MasterUnit[] = [
-  { id: 'unit-1', code: 'TK', name: 'TK Lazuardi', headName: 'Ratna Sari, S.Pd', email: 'tk@lazuardi.sch.id' },
-  { id: 'unit-2', code: 'SD', name: 'SD Lazuardi', headName: 'Drs. H. Mulyadi', email: 'sd@lazuardi.sch.id' },
-  { id: 'unit-3', code: 'SMP', name: 'SMP Lazuardi', headName: 'Dra. Hj. Nurul Hidayah', email: 'smp@lazuardi.sch.id' },
-  { id: 'unit-4', code: 'SMA', name: 'SMA Lazuardi', headName: 'Ir. Taufik Ismail, M.M', email: 'sma@lazuardi.sch.id' },
-  { id: 'unit-5', code: 'GA', name: 'General Affairs', headName: 'Bambang Irawan', email: 'ga@lazuardi.sch.id' },
-  { id: 'unit-6', code: 'FIN', name: 'Finance & Accounting', headName: 'Sri Wahyuni, S.E', email: 'finance@lazuardi.sch.id' },
-  { id: 'unit-7', code: 'HR', name: 'Human Resources', headName: 'dr. Maya Farida', email: 'hr@lazuardi.sch.id' },
-  { id: 'unit-8', code: 'IT', name: 'Information Technology', headName: 'Ahmad Fauzi, S.Kom', email: 'it@lazuardi.sch.id' },
+  { id: 'unit-1', code: 'TK', name: 'TK Lazuardi', headName: 'Ratna Sari, S.Pd', email: 'ratna.tk@lazuardi.sch.id' },
+  { id: 'unit-2', code: 'SD', name: 'SD Lazuardi', headName: 'Drs. H. Mulyadi', email: 'mulyadi.sd@lazuardi.sch.id' },
+  { id: 'unit-3', code: 'SMP', name: 'SMP Lazuardi', headName: 'Dra. Hj. Nurul Hidayah', email: 'nurul.manager@lazuardi.sch.id' },
+  { id: 'unit-4', code: 'SMA', name: 'SMA Lazuardi', headName: 'Ir. Taufik Ismail, M.M', email: 'taufik.sma@lazuardi.sch.id' },
+  { id: 'unit-5', code: 'GA', name: 'General Affairs', headName: 'Bambang Irawan', email: 'bambang.ga@lazuardi.sch.id' },
+  { id: 'unit-6', code: 'FIN', name: 'Finance & Accounting', headName: 'Sri Wahyuni, S.E', email: 'sri.finance@lazuardi.sch.id' },
+  { id: 'unit-7', code: 'HR', name: 'Human Resources', headName: 'dr. Maya Farida', email: 'maya.hr@lazuardi.sch.id' },
+  { id: 'unit-8', code: 'IT', name: 'Information Technology', headName: 'Ahmad Fauzi, S.Kom', email: 'admin.super@lazuardi.sch.id' },
   { id: 'unit-9', code: 'SEC', name: 'Security & Safety', headName: 'Agus Salim', email: 'security@lazuardi.sch.id' },
-  { id: 'unit-10', code: 'RR', name: 'Resources Room', headName: 'Siti Rahmawati', email: 'resources@lazuardi.sch.id' },
-  { id: 'unit-11', code: 'MGT', name: 'Management / Yayasan', headName: 'Dr. Haidar Bagir', email: 'management@lazuardi.sch.id' }
+  { id: 'unit-10', code: 'RR', name: 'Resources Room', headName: 'Siti Rahmawati', email: 'resources.room@lazuardi.sch.id' },
+  { id: 'unit-11', code: 'MGT', name: 'Management / Yayasan', headName: 'Dr. Haidar Bagir', email: 'haidar.bagir@lazuardi.sch.id' }
 ];
 
 export const INITIAL_DEPARTMENTS: MasterDepartment[] = [

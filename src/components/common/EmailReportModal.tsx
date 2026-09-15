@@ -1,24 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from './Modal';
 import { ServiceRequest, MasterUnit, EmailReportData, EmailNotificationLog } from '../../types';
 import { 
   generateOrderCompletionEmail, 
   getGmailComposeUrl, 
   getMailtoUrl,
-  saveEmailNotificationLog 
+  saveEmailNotificationLog,
+  resolveUnitHeadInfo,
+  RegisteredEmailOption
 } from '../../services/emailService';
+import { useApp } from '../../context/AppContext';
 import { 
   Mail, 
   Send, 
   ExternalLink, 
   Copy, 
   Check, 
-  User, 
-  Calendar, 
-  FileText, 
+  User as UserIcon, 
   CheckCircle2,
   Building,
-  Info
+  Info,
+  Edit3,
+  ShieldCheck,
+  RotateCcw
 } from 'lucide-react';
 
 interface EmailReportModalProps {
@@ -38,13 +42,56 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
   operatorName,
   onMarkSent
 }) => {
+  const { units, users, currentUser } = useApp();
+  const effectiveOperator = operatorName || currentUser?.name || 'Admin Resources Room';
+
+  // Resolve accurate registered head info
+  const resolution = useMemo(() => {
+    if (!request) return null;
+    return resolveUnitHeadInfo(request.unit, units, users);
+  }, [request?.unit, units, users]);
+
+  const [recipientEmail, setRecipientEmail] = useState<string>('');
+  const [recipientName, setRecipientName] = useState<string>('');
+  const [ccEmail, setCcEmail] = useState<string>('');
+  const [isEditingRecipient, setIsEditingRecipient] = useState<boolean>(false);
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<'preview' | 'html' | 'details'>('preview');
+  const [activeTab, setActiveTab] = useState<'preview' | 'html'>('preview');
   const [sentSuccess, setSentSuccess] = useState(false);
 
-  if (!request) return null;
+  // Sync state whenever request or resolution changes
+  useEffect(() => {
+    if (resolution && request) {
+      // Use existing sent recipient or primary registered email
+      const initialEmail = request.emailSentRecipient || resolution.primaryEmail;
+      setRecipientEmail(initialEmail);
+      setRecipientName(resolution.headName);
+      setCcEmail([request.userEmail, 'resources.room@lazuardi.sch.id'].filter(Boolean).join(', '));
+      setIsEditingRecipient(false);
+      setSentSuccess(false);
+    }
+  }, [request?.id, request?.emailSentRecipient, resolution]);
 
-  const emailData: EmailReportData = generateOrderCompletionEmail(request, unitObj, operatorName);
+  if (!request || !resolution) return null;
+
+  // Generate real-time email report based on current selected/edited recipient
+  const emailData: EmailReportData = generateOrderCompletionEmail(
+    request,
+    resolution.matchedUnit || unitObj,
+    effectiveOperator,
+    users,
+    {
+      email: recipientEmail || resolution.primaryEmail,
+      name: recipientName || resolution.headName,
+      cc: ccEmail
+    }
+  );
+
+  const handleSelectOption = (opt: RegisteredEmailOption) => {
+    setRecipientEmail(opt.email);
+    setRecipientName(opt.name);
+    setIsEditingRecipient(false);
+  };
 
   const handleCopy = async () => {
     try {
@@ -79,7 +126,7 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
       recipientName: emailData.toName,
       subject: emailData.subject,
       sentAt: new Date().toISOString(),
-      sentBy: operatorName || 'Admin Resources Room',
+      sentBy: effectiveOperator,
       method,
       status: 'Terkirim',
       bodyPreview: emailData.plainBody.slice(0, 150) + '...'
@@ -97,50 +144,155 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Kirim Laporan Order ke Kepala Unit (Email)"
-      subtitle={`No. Transaksi: ${request.requestNumber} • Unit: ${request.unit}`}
+      subtitle={`No. Transaksi: ${request.requestNumber} • Unit Pemohon: ${request.unit}`}
       maxWidth="3xl"
     >
-      <div className="space-y-5">
+      <div className="space-y-4">
 
         {/* Status Notification Banner */}
         {request.emailSentToHead || sentSuccess ? (
-          <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between gap-3 text-emerald-900 text-xs">
+          <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between gap-3 text-emerald-900 text-xs">
             <div className="flex items-center gap-2.5">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
               <div>
                 <span className="font-bold block text-sm">Laporan Telah Dikirimkan ke Kepala Unit</span>
                 <span className="text-emerald-700">
-                  Terkirim ke <strong>{emailData.to}</strong> {request.emailSentDate ? `pada ${new Date(request.emailSentDate).toLocaleString('id-ID')}` : 'baru saja'}
+                  Ditujukan ke <strong>{emailData.to}</strong> ({emailData.toName}) {request.emailSentDate ? `pada ${new Date(request.emailSentDate).toLocaleString('id-ID')}` : 'baru saja'}
                 </span>
               </div>
             </div>
-            <span className="px-2.5 py-1 bg-emerald-200 text-emerald-800 text-[11px] font-bold rounded-md">
+            <span className="px-2.5 py-1 bg-emerald-200 text-emerald-800 text-[11px] font-bold rounded-md shrink-0">
               ✓ Terkirim
             </span>
           </div>
         ) : (
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2.5 text-amber-900 text-xs">
-            <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl flex items-start gap-2.5 text-teal-950 text-xs">
+            <Info className="w-4 h-4 text-teal-700 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold block">Pemberitahuan Laporan Penyelesaian Order</span>
               <span>
-                Order telah berstatus <strong>Selesai</strong>. Kirimkan laporan rincian pengerjaan dan serah terima ini kepada Kepala Unit sebagai arsip resmi.
+                Sistem secara otomatis mendeteksi alamat email resmi Kepala/Pimpinan Unit dari database pengguna dan master unit yang terdaftar.
               </span>
             </div>
           </div>
         )}
 
-        {/* Email Header Meta Fields */}
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs space-y-2.5">
+        {/* RECIPIENT CONFIGURATION CARD */}
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs space-y-3">
           
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
-            <span className="sm:col-span-2 font-bold text-slate-500 uppercase tracking-wider text-[11px]">Kepada:</span>
+          {/* Header Row: Label and Verified Indicator */}
+          <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-200">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-teal-600" />
+              <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                Tujuan Pengiriman: Kepala / Pimpinan Unit {resolution.unitName}
+              </span>
+            </div>
+            
+            <button
+              type="button"
+              onClick={() => setIsEditingRecipient(!isEditingRecipient)}
+              className="px-2.5 py-1 text-[11px] font-semibold text-teal-800 hover:text-teal-950 hover:bg-teal-100 rounded-md border border-teal-200 transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>{isEditingRecipient ? 'Tutup Pengaturan Alamat' : 'Ubah / Sesuaikan Alamat'}</span>
+            </button>
+          </div>
+
+          {/* Registered Email Quick Selectors */}
+          <div>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+              Pilihan Alamat Email Terdaftar Sesuai Sistem:
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {resolution.options.map((opt, idx) => {
+                const isSelected = recipientEmail.toLowerCase().trim() === opt.email.toLowerCase().trim();
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSelectOption(opt)}
+                    className={`text-left p-2 rounded-lg border transition-all cursor-pointer flex items-center gap-2 text-xs ${
+                      isSelected
+                        ? 'bg-teal-50 border-teal-500 text-teal-950 font-bold shadow-xs ring-1 ring-teal-400'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className={`p-1.5 rounded-full ${isSelected ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <UserIcon className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <strong className="text-slate-900">{opt.name}</strong>
+                        {opt.isRecommended && (
+                          <span className="text-[9px] uppercase px-1.5 py-0.2 bg-teal-100 text-teal-800 font-bold rounded">
+                            Utama
+                          </span>
+                        )}
+                      </div>
+                      <div className="font-mono text-[11px] text-teal-700 font-semibold">{opt.email}</div>
+                      <span className="text-[10px] text-slate-500 block">{opt.roleOrTitle}</span>
+                    </div>
+                    {isSelected && (
+                      <CheckCircle2 className="w-4 h-4 text-teal-600 ml-1 shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Custom Editable Inputs (if toggled) */}
+          {isEditingRecipient && (
+            <div className="p-3 bg-white border border-teal-300 rounded-lg space-y-2 mt-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-800 text-[11px]">Ketik / Sesuaikan Manual Alamat Penerima:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecipientEmail(resolution.primaryEmail);
+                    setRecipientName(resolution.headName);
+                  }}
+                  className="text-[10px] text-teal-700 hover:underline flex items-center gap-1 cursor-pointer font-semibold"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Reset ke Default Terdaftar</span>
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] text-slate-500 mb-0.5 font-bold">Nama Pimpinan / Kepala Unit:</label>
+                  <input
+                    type="text"
+                    value={recipientName}
+                    onChange={(e) => setRecipientName(e.target.value)}
+                    placeholder="Contoh: Dra. Hj. Nurul Hidayah"
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-md text-xs font-semibold focus:outline-hidden focus:border-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-500 mb-0.5 font-bold">Alamat Email Penerima (@lazuardi.sch.id):</label>
+                  <input
+                    type="email"
+                    value={recipientEmail}
+                    onChange={(e) => setRecipientEmail(e.target.value)}
+                    placeholder="Contoh: nurul.manager@lazuardi.sch.id"
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-md text-xs font-mono font-bold text-teal-900 focus:outline-hidden focus:border-teal-500"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Summary Current Active Fields */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center pt-2 border-t border-slate-200">
+            <span className="sm:col-span-2 font-bold text-slate-500 uppercase tracking-wider text-[11px]">Penerima (To):</span>
             <div className="sm:col-span-10 flex items-center flex-wrap gap-2">
               <span className="px-2.5 py-1 bg-teal-100 text-teal-900 font-bold rounded-md border border-teal-200 flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-teal-700" />
+                <UserIcon className="w-3.5 h-3.5 text-teal-700" />
                 <span>{emailData.toName}</span>
               </span>
-              <span className="font-mono text-slate-700 bg-white px-2 py-1 rounded border border-slate-200">
+              <span className="font-mono text-teal-950 font-bold bg-white px-2 py-1 rounded border border-slate-200 shadow-2xs">
                 {emailData.to}
               </span>
             </div>
@@ -149,16 +301,20 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
             <span className="sm:col-span-2 font-bold text-slate-500 uppercase tracking-wider text-[11px]">Tembusan (CC):</span>
             <div className="sm:col-span-10 flex items-center flex-wrap gap-2">
-              <span className="text-slate-700 font-mono bg-white px-2 py-1 rounded border border-slate-200">
-                {emailData.cc}
-              </span>
+              <input
+                type="text"
+                value={ccEmail}
+                onChange={(e) => setCcEmail(e.target.value)}
+                className="font-mono text-slate-700 bg-white px-2 py-1 rounded border border-slate-200 text-xs w-full max-w-md focus:outline-hidden focus:border-teal-500"
+                placeholder="pemohon@lazuardi.sch.id, resources.room@lazuardi.sch.id"
+              />
               <span className="text-[11px] text-slate-500 italic">
                 (Pemohon & Arsip RR)
               </span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center pt-1 border-t border-slate-200">
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
             <span className="sm:col-span-2 font-bold text-slate-500 uppercase tracking-wider text-[11px]">Subjek:</span>
             <div className="sm:col-span-10 font-bold text-slate-800 bg-white px-2.5 py-1.5 rounded border border-slate-200 truncate">
               {emailData.subject}
@@ -167,7 +323,7 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
 
         </div>
 
-        {/* Tab Selector */}
+        {/* Tab Selector for Preview */}
         <div className="flex items-center justify-between border-b border-slate-200 pb-2">
           <div className="flex items-center gap-2">
             <button
@@ -203,7 +359,7 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
             ) : (
               <>
                 <Copy className="w-3.5 h-3.5 text-slate-500" />
-                <span>Salin Pesan</span>
+                <span>Salin Teks Laporan</span>
               </>
             )}
           </button>
@@ -212,31 +368,31 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
         {/* Content Box */}
         {activeTab === 'preview' ? (
           <div className="relative">
-            <pre className="p-4 bg-slate-900 text-emerald-400 font-mono text-[11.5px] rounded-xl overflow-x-auto max-h-72 leading-relaxed border border-slate-800 whitespace-pre-wrap selection:bg-teal-700 selection:text-white">
+            <pre className="p-4 bg-slate-900 text-emerald-400 font-mono text-[11.5px] rounded-xl overflow-x-auto max-h-64 leading-relaxed border border-slate-800 whitespace-pre-wrap selection:bg-teal-700 selection:text-white">
               {emailData.plainBody}
             </pre>
           </div>
         ) : (
-          <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto bg-white p-4">
+          <div className="border border-slate-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto bg-white p-4">
             <div dangerouslySetInnerHTML={{ __html: emailData.htmlBody }} />
           </div>
         )}
 
-        {/* Dispatch Action Buttons */}
-        <div className="p-4 bg-teal-50/60 border border-teal-200 rounded-xl space-y-3">
+        {/* DISPATCH ACTION BUTTONS */}
+        <div className="p-4 bg-teal-50/70 border border-teal-200 rounded-xl space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
               <h4 className="text-xs font-extrabold text-teal-950 uppercase tracking-wide flex items-center gap-1.5">
                 <Send className="w-3.5 h-3.5 text-teal-700" />
-                <span>Metode Pengiriman Email Lazuardi</span>
+                <span>Kirim Laporan Resmi ke Alamat Terdaftar</span>
               </h4>
               <p className="text-[11px] text-teal-800 mt-0.5">
-                Pilih opsi pengiriman langsung ke alamat <strong>{emailData.to}</strong>:
+                Alamat tujuan pengiriman aktif: <strong>{emailData.to}</strong> ({emailData.toName})
               </p>
             </div>
             {sentSuccess && (
               <span className="text-xs font-bold text-emerald-700 flex items-center gap-1">
-                <CheckCircle2 className="w-4 h-4" /> Notifikasi dicatat
+                <CheckCircle2 className="w-4 h-4" /> Pengiriman dicatat
               </span>
             )}
           </div>
@@ -278,20 +434,21 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
                 <Check className="w-4 h-4 text-emerald-600" />
                 <span>Tandai Terkirim Manual</span>
               </div>
-              <span className="text-[10px] font-normal text-slate-500">Simpan status pemberitahuan</span>
+              <span className="text-[10px] font-normal text-slate-500">Simpan status pengiriman</span>
             </button>
           </div>
         </div>
 
         {/* Modal Footer */}
         <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-          <div className="text-[11px] text-slate-500">
-            Ditujukan ke: <strong>{emailData.to}</strong> ({unitObj?.name || request.unit})
+          <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+            <Building className="w-3.5 h-3.5 text-slate-400" />
+            <span>Unit: <strong>{resolution.unitName}</strong> • Email Tujuan: <strong>{emailData.to}</strong></span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 border border-slate-300 hover:bg-slate-100 rounded-lg font-bold text-xs text-slate-700 cursor-pointer"
+            className="px-4 py-2 border border-slate-300 hover:bg-slate-100 rounded-lg font-bold text-xs text-slate-700 cursor-pointer transition-colors"
           >
             Tutup
           </button>

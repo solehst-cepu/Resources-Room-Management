@@ -25,7 +25,8 @@ import {
 } from '../types';
 import { 
   generateOrderCompletionEmail, 
-  saveEmailNotificationLog 
+  saveEmailNotificationLog,
+  resolveUnitHeadInfo 
 } from '../services/emailService';
 import { 
   INITIAL_USERS, 
@@ -139,6 +140,7 @@ interface AppContextType {
       adminNotes?: string;
       pickedUpBy?: string;
       quantityApprovedMap?: Record<string, number>;
+      recipientEmail?: string;
     }
   ) => void;
   deleteRequest: (requestId: string) => void;
@@ -1101,6 +1103,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       adminNotes?: string;
       pickedUpBy?: string;
       quantityApprovedMap?: Record<string, number>;
+      recipientEmail?: string;
     }
   ) => {
     const reqIndex = requests.findIndex(r => r.id === requestId);
@@ -1140,13 +1143,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedReq.processedBy = currentUser?.name || 'Admin Resources Room';
       updatedReq.pickedUpBy = extraData?.pickedUpBy || req.userName;
 
-      // Find unit head for email report
-      const unitObj = units.find(
-        u => u.code.toLowerCase() === req.unit.toLowerCase() || 
-             u.name.toLowerCase().includes(req.unit.toLowerCase())
-      );
-      const headName = unitObj?.headName || 'Kepala Unit';
-      const headEmail = unitObj?.email || `${req.unit.toLowerCase()}@lazuardi.sch.id`;
+      // Find unit head for email report accurately using registered data
+      const headInfo = resolveUnitHeadInfo(req.unit, units, users);
+      const headName = headInfo.headName;
+      const headEmail = (extraData?.recipientEmail || headInfo.primaryEmail).trim();
 
       updatedReq.emailSentToHead = true;
       updatedReq.emailSentDate = new Date().toISOString();
@@ -1296,15 +1296,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newNotifs: AppNotification[] = [userNotif];
 
     if (status === 'Selesai') {
-      const unitObj = units.find(
-        u => u.code.toLowerCase() === req.unit.toLowerCase() || 
-             u.name.toLowerCase().includes(req.unit.toLowerCase())
-      );
-      const headName = unitObj?.headName || 'Kepala Unit';
-      const headEmail = unitObj?.email || `${req.unit.toLowerCase()}@lazuardi.sch.id`;
+      const headInfo = resolveUnitHeadInfo(req.unit, units, users);
+      const headName = headInfo.headName;
+      const headEmail = (extraData?.recipientEmail || headInfo.primaryEmail).trim();
+      const unitObj = headInfo.matchedUnit;
 
       // Generate email report and record log
-      const emailReport = generateOrderCompletionEmail(updatedReq, unitObj, currentUser?.name);
+      const emailReport = generateOrderCompletionEmail(
+        updatedReq, 
+        unitObj, 
+        currentUser?.name,
+        users,
+        { email: headEmail, name: headName }
+      );
       const emailLog: EmailNotificationLog = {
         id: `elog-${Date.now()}`,
         requestId: req.id,
@@ -1349,12 +1353,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     if (status === 'Selesai') {
-      const unitObj = units.find(
-        u => u.code.toLowerCase() === req.unit.toLowerCase() || 
-             u.name.toLowerCase().includes(req.unit.toLowerCase())
-      );
-      const headName = unitObj?.headName || 'Kepala Unit';
-      const headEmail = unitObj?.email || `${req.unit.toLowerCase()}@lazuardi.sch.id`;
+      const headInfo = resolveUnitHeadInfo(req.unit, units, users);
+      const headName = headInfo.headName;
+      const headEmail = (extraData?.recipientEmail || headInfo.primaryEmail).trim();
       showToast('success', 'Order Selesai & Laporan Email Terkirim', `${req.requestNumber} telah selesai. Laporan telah dikirimkan ke Kepala Unit ${headName} (${headEmail})`);
     } else {
       showToast('info', 'Status Diperbarui', `${req.requestNumber} sekarang berstatus ${status}`);
@@ -1368,14 +1369,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const req = requests.find(r => r.id === requestId);
     if (!req) return { success: false, message: 'Data order tidak ditemukan' };
 
-    const unitObj = units.find(
-      u => u.code.toLowerCase() === req.unit.toLowerCase() || 
-           u.name.toLowerCase().includes(req.unit.toLowerCase())
-    );
-    const headName = unitObj?.headName || 'Kepala Unit';
-    const targetEmail = (recipientOverride || unitObj?.email || `${req.unit.toLowerCase()}@lazuardi.sch.id`).trim();
+    const headInfo = resolveUnitHeadInfo(req.unit, units, users);
+    const headName = headInfo.headName;
+    const targetEmail = (recipientOverride || headInfo.primaryEmail).trim();
+    const unitObj = headInfo.matchedUnit;
 
-    const emailReport = generateOrderCompletionEmail(req, unitObj, currentUser?.name);
+    const emailReport = generateOrderCompletionEmail(
+      req, 
+      unitObj, 
+      currentUser?.name,
+      users,
+      { email: targetEmail, name: headName }
+    );
     if (recipientOverride) {
       emailReport.to = targetEmail;
       emailReport.toName = `${headName} (${targetEmail})`;

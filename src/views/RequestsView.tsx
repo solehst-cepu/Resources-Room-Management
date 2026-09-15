@@ -42,7 +42,8 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
     requests, 
     units, 
     updateRequestStatus, 
-    deleteRequest 
+    deleteRequest,
+    sendOrderCompletionEmailReport 
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -982,6 +983,9 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
           setEmailModalRequest(null);
         }}
         request={emailModalRequest}
+        onMarkSent={(reqId, recipient) => {
+          sendOrderCompletionEmailReport(reqId, recipient);
+        }}
       />
 
     </div>
