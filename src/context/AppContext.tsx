@@ -234,8 +234,12 @@ const STORAGE_KEY_PREFIX = 'lazuardi_rr_';
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load initial states from LocalStorage or defaults
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    // Default to null so the app opens at the Login screen
-    return null;
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}current_user`);
+      return (saved && saved !== 'null' && saved !== 'undefined') ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
 
   const [users, setUsers] = useState<User[]>(() => {
@@ -379,20 +383,115 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             fetchAllFromTable<any>('role_configs', transformRoleConfigFromDB)
           ]);
 
-          if (remoteUsers && remoteUsers.length > 0) setUsers(remoteUsers);
-          if (remoteItems && remoteItems.length > 0) setItems(remoteItems);
-          if (remoteUniforms && remoteUniforms.length > 0) setUniforms(remoteUniforms);
-          if (remoteWaterLocs && remoteWaterLocs.length > 0) setWaterLocations(remoteWaterLocs);
-          if (remoteWaterInv && remoteWaterInv.length > 0) setWaterInventory(remoteWaterInv[0]);
-          if (remoteWaterLogs && remoteWaterLogs.length > 0) setWaterProviderLogs(remoteWaterLogs);
-          if (remoteWaterOpname && remoteWaterOpname.length > 0) setWaterOpnameRecords(remoteWaterOpname);
-          if (remoteRequests && remoteRequests.length > 0) setRequests(remoteRequests);
-          if (remoteTrx && remoteTrx.length > 0) setStockTransactions(remoteTrx);
-          if (remoteUnits && remoteUnits.length > 0) setUnits(remoteUnits);
-          if (remoteDepts && remoteDepts.length > 0) setDepartments(remoteDepts);
-          if (remoteSuppliers && remoteSuppliers.length > 0) setSuppliers(remoteSuppliers);
-          if (remoteLocations && remoteLocations.length > 0) setLocations(remoteLocations);
-          if (remoteRoles && remoteRoles.length > 0) setRoleConfigs(remoteRoles);
+          if (remoteUsers && remoteUsers.length > 0) {
+            setUsers(prev => {
+              const remoteIds = new Set(remoteUsers.map((u: User) => u.id));
+              const remoteEmails = new Set(remoteUsers.map((u: User) => u.email.toLowerCase().trim()));
+              const localOnly = prev.filter(u => !remoteIds.has(u.id) && !remoteEmails.has(u.email.toLowerCase().trim()));
+              localOnly.forEach(u => upsertToTable('users', transformUserToDB(u)).catch(console.warn));
+              return [...remoteUsers, ...localOnly];
+            });
+          }
+
+          if (remoteItems && remoteItems.length > 0) {
+            setItems(prev => {
+              const remoteIds = new Set(remoteItems.map((i: MasterItem) => i.id));
+              const remoteCodes = new Set(remoteItems.map((i: MasterItem) => i.code.toLowerCase().trim()));
+              const localOnly = prev.filter(i => !remoteIds.has(i.id) && !remoteCodes.has(i.code.toLowerCase().trim()));
+              localOnly.forEach(i => upsertToTable('master_items', transformItemToDB(i)).catch(console.warn));
+              return [...remoteItems, ...localOnly];
+            });
+          }
+
+          if (remoteUniforms && remoteUniforms.length > 0) {
+            setUniforms(prev => {
+              const remoteIds = new Set(remoteUniforms.map((u: UniformItem) => u.id));
+              const remoteCodes = new Set(remoteUniforms.map((u: UniformItem) => u.code.toLowerCase().trim()));
+              const localOnly = prev.filter(u => !remoteIds.has(u.id) && !remoteCodes.has(u.code.toLowerCase().trim()));
+              localOnly.forEach(u => upsertToTable('uniform_items', transformUniformToDB(u)).catch(console.warn));
+              return [...remoteUniforms, ...localOnly];
+            });
+          }
+
+          if (remoteWaterLocs && remoteWaterLocs.length > 0) {
+            setWaterLocations(prev => {
+              const remoteIds = new Set(remoteWaterLocs.map((w: WaterLocation) => w.id));
+              const localOnly = prev.filter(w => !remoteIds.has(w.id));
+              localOnly.forEach(w => upsertToTable('water_locations', transformWaterLocationToDB(w)).catch(console.warn));
+              return [...remoteWaterLocs, ...localOnly];
+            });
+          }
+
+          if (remoteWaterInv && remoteWaterInv.length > 0) {
+            setWaterInventory(remoteWaterInv[0]);
+          }
+
+          if (remoteWaterLogs && remoteWaterLogs.length > 0) {
+            setWaterProviderLogs(remoteWaterLogs);
+          }
+
+          if (remoteWaterOpname && remoteWaterOpname.length > 0) {
+            setWaterOpnameRecords(remoteWaterOpname);
+          }
+
+          if (remoteRequests && remoteRequests.length > 0) {
+            setRequests(prev => {
+              const remoteIds = new Set(remoteRequests.map((r: ServiceRequest) => r.id));
+              const localOnly = prev.filter(r => !remoteIds.has(r.id));
+              localOnly.forEach(r => upsertToTable('service_requests', transformRequestToDB(r)).catch(console.warn));
+              return [...localOnly, ...remoteRequests];
+            });
+          }
+
+          if (remoteTrx && remoteTrx.length > 0) {
+            setStockTransactions(prev => {
+              const remoteIds = new Set(remoteTrx.map((t: StockTransaction) => t.id));
+              const localOnly = prev.filter(t => !remoteIds.has(t.id));
+              localOnly.forEach(t => upsertToTable('stock_transactions', transformStockTransactionToDB(t)).catch(console.warn));
+              return [...localOnly, ...remoteTrx];
+            });
+          }
+
+          if (remoteUnits && remoteUnits.length > 0) {
+            setUnits(prev => {
+              const remoteIds = new Set(remoteUnits.map((u: MasterUnit) => u.id));
+              const remoteCodes = new Set(remoteUnits.map((u: MasterUnit) => u.code.toLowerCase().trim()));
+              const localOnly = prev.filter(u => !remoteIds.has(u.id) && !remoteCodes.has(u.code.toLowerCase().trim()));
+              localOnly.forEach(u => upsertToTable('master_units', transformUnitToDB(u)).catch(console.warn));
+              return [...remoteUnits, ...localOnly];
+            });
+          }
+
+          if (remoteDepts && remoteDepts.length > 0) {
+            setDepartments(prev => {
+              const remoteIds = new Set(remoteDepts.map((d: MasterDepartment) => d.id));
+              const localOnly = prev.filter(d => !remoteIds.has(d.id));
+              localOnly.forEach(d => upsertToTable('master_departments', transformDeptToDB(d)).catch(console.warn));
+              return [...remoteDepts, ...localOnly];
+            });
+          }
+
+          if (remoteSuppliers && remoteSuppliers.length > 0) {
+            setSuppliers(prev => {
+              const remoteIds = new Set(remoteSuppliers.map((s: MasterSupplier) => s.id));
+              const localOnly = prev.filter(s => !remoteIds.has(s.id));
+              localOnly.forEach(s => upsertToTable('master_suppliers', transformSupplierToDB(s)).catch(console.warn));
+              return [...remoteSuppliers, ...localOnly];
+            });
+          }
+
+          if (remoteLocations && remoteLocations.length > 0) {
+            setLocations(prev => {
+              const remoteIds = new Set(remoteLocations.map((l: MasterLocation) => l.id));
+              const localOnly = prev.filter(l => !remoteIds.has(l.id));
+              localOnly.forEach(l => upsertToTable('master_locations', transformLocationToDB(l)).catch(console.warn));
+              return [...remoteLocations, ...localOnly];
+            });
+          }
+
+          if (remoteRoles && remoteRoles.length > 0) {
+            setRoleConfigs(remoteRoles);
+          }
         } catch (err) {
           console.warn('[Supabase] Non-blocking initial fetch error:', err);
         }
@@ -484,7 +583,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync to LocalStorage
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}current_user`, JSON.stringify(currentUser));
+    if (currentUser) {
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}current_user`, JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}current_user`);
+    }
   }, [currentUser]);
 
   useEffect(() => {
@@ -744,25 +847,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setRequests(prev => [newRequest, ...prev]);
 
+    // Save immediately to Supabase
+    upsertToTable('service_requests', transformRequestToDB(newRequest)).catch(err => {
+      console.warn('[Supabase] Failed to persist new service request:', err);
+    });
+
     // Update Water Inventory directly if air_galon (Pengambilan Langsung tanpa proses otorisasi)
     if (isWater && data.waterDetail) {
       const qty = Number(data.waterDetail.gallonCount) || 1;
       const returnedQty = Number(data.waterDetail.emptyGallonsReturned) ?? 0;
 
-      setWaterInventory(prev => ({
-        ...prev,
-        filledGallons: Math.max(0, prev.filledGallons - qty),
-        emptyGallons: prev.emptyGallons + returnedQty,
-        inDistribution: Math.max(0, prev.inDistribution + (qty - returnedQty))
-      }));
+      setWaterInventory(prev => {
+        const updated = {
+          ...prev,
+          filledGallons: Math.max(0, prev.filledGallons - qty),
+          emptyGallons: prev.emptyGallons + returnedQty,
+          inDistribution: Math.max(0, prev.inDistribution + (qty - returnedQty))
+        };
+        upsertToTable('water_inventory', transformWaterInventoryToDB(updated)).catch(console.warn);
+        return updated;
+      });
 
       if (data.waterDetail.locationId) {
-        setWaterLocations(prev => prev.map(loc => loc.id === data.waterDetail?.locationId ? {
-          ...loc,
-          activeGallons: Math.max(1, loc.activeGallons + (qty - returnedQty)),
-          lastRefillDate: new Date().toISOString().slice(0, 10),
-          emptyGallons: 0
-        } : loc));
+        setWaterLocations(prev => prev.map(loc => {
+          if (loc.id === data.waterDetail?.locationId) {
+            const updatedLoc = {
+              ...loc,
+              activeGallons: Math.max(1, loc.activeGallons + (qty - returnedQty)),
+              lastRefillDate: new Date().toISOString().slice(0, 10),
+              emptyGallons: 0
+            };
+            upsertToTable('water_locations', transformWaterLocationToDB(updatedLoc)).catch(console.warn);
+            return updatedLoc;
+          }
+          return loc;
+        }));
       }
     }
 
@@ -948,7 +1067,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const newStatus = after === 0 ? 'out_of_stock' : (after <= targetItem.minStock ? 'low_stock' : 'available');
                 
                 // Update item
-                setItems(prevItems => prevItems.map(it => it.id === targetItem.id ? { ...it, stock: after, status: newStatus } : it));
+                const updatedItem = { ...targetItem, stock: after, status: newStatus };
+                setItems(prevItems => prevItems.map(it => it.id === targetItem.id ? updatedItem : it));
+                upsertToTable('master_items', transformItemToDB(updatedItem)).catch(console.warn);
                 
                 // Create Stock Transaction
                 const trx: StockTransaction = {
@@ -970,6 +1091,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   notes: `Distribusi untuk ${req.userName} (${req.unit})`
                 };
                 setStockTransactions(prev => [trx, ...prev]);
+                upsertToTable('stock_transactions', transformStockTransactionToDB(trx)).catch(console.warn);
 
                 // Check low stock alert
                 if (after <= targetItem.minStock) {
@@ -992,7 +1114,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const after = Math.max(0, before - qtyToDeduct);
                 const newStatus = after === 0 ? 'out_of_stock' : (after <= targetUniform.minStock ? 'low_stock' : 'available');
                 
-                setUniforms(prevUnis => prevUnis.map(u => u.id === targetUniform.id ? { ...u, stock: after, status: newStatus } : u));
+                const updatedUniform = { ...targetUniform, stock: after, status: newStatus };
+                setUniforms(prevUnis => prevUnis.map(u => u.id === targetUniform.id ? updatedUniform : u));
+                upsertToTable('uniform_items', transformUniformToDB(updatedUniform)).catch(console.warn);
 
                 const trx: StockTransaction = {
                   id: `stk-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -1013,6 +1137,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   notes: `Penyerahan seragam untuk ${req.userName} (${req.unit})`
                 };
                 setStockTransactions(prev => [trx, ...prev]);
+                upsertToTable('stock_transactions', transformStockTransactionToDB(trx)).catch(console.warn);
               }
             }
           });
@@ -1020,26 +1145,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           // Gallon distribution update
           const qty = req.waterDetail.gallonCount || 1;
           const returnedQty = req.waterDetail.emptyGallonsReturned ?? 0;
-          setWaterInventory(prev => ({
-            ...prev,
-            filledGallons: Math.max(0, prev.filledGallons - qty),
-            emptyGallons: prev.emptyGallons + returnedQty,
-            inDistribution: Math.max(0, prev.inDistribution + (qty - returnedQty))
-          }));
+          setWaterInventory(prev => {
+            const updated = {
+              ...prev,
+              filledGallons: Math.max(0, prev.filledGallons - qty),
+              emptyGallons: prev.emptyGallons + returnedQty,
+              inDistribution: Math.max(0, prev.inDistribution + (qty - returnedQty))
+            };
+            upsertToTable('water_inventory', transformWaterInventoryToDB(updated)).catch(console.warn);
+            return updated;
+          });
           // Update location last refill
           if (req.waterDetail.locationId) {
-            setWaterLocations(prev => prev.map(loc => loc.id === req.waterDetail?.locationId ? {
-              ...loc,
-              activeGallons: Math.max(1, loc.activeGallons + (qty - returnedQty)),
-              lastRefillDate: new Date().toISOString().slice(0, 10),
-              emptyGallons: 0
-            } : loc));
+            setWaterLocations(prev => prev.map(loc => {
+              if (loc.id === req.waterDetail?.locationId) {
+                const updatedLoc = {
+                  ...loc,
+                  activeGallons: Math.max(1, loc.activeGallons + (qty - returnedQty)),
+                  lastRefillDate: new Date().toISOString().slice(0, 10),
+                  emptyGallons: 0
+                };
+                upsertToTable('water_locations', transformWaterLocationToDB(updatedLoc)).catch(console.warn);
+                return updatedLoc;
+              }
+              return loc;
+            }));
           }
         }
       }
     }
 
     setRequests(prev => prev.map(r => r.id === requestId ? updatedReq : r));
+    upsertToTable('service_requests', transformRequestToDB(updatedReq)).catch(err => {
+      console.warn('[Supabase] Failed to update request in cloud:', err);
+    });
 
     // Send notification to user
     const userNotif: AppNotification = {
@@ -1070,8 +1209,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     setRequests(prev => prev.filter(r => r.id !== requestId));
     
-    // Sync deletion to Supabase cloud if connected
-    deleteFromTable('requests', 'id', requestId).catch(err => {
+    // Sync deletion to Supabase cloud ('service_requests')
+    deleteFromTable('service_requests', 'id', requestId).catch(err => {
       console.warn('Cloud delete request sync error:', err);
     });
 
@@ -1092,6 +1231,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status
     };
     setItems(prev => [...prev, newItem]);
+    upsertToTable('master_items', transformItemToDB(newItem)).catch(console.warn);
     addAuditLog('Tambah Master Barang', 'Inventori', `Menambahkan barang baru: ${data.name} (${data.code})`);
     showToast('success', 'Barang Ditambahkan', `${data.name} berhasil disimpan`);
   };
@@ -1101,6 +1241,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (item.id === id) {
         const updated = { ...item, ...data };
         updated.status = updated.stock === 0 ? 'out_of_stock' : (updated.stock <= updated.minStock ? 'low_stock' : 'available');
+        upsertToTable('master_items', transformItemToDB(updated)).catch(console.warn);
         return updated;
       }
       return item;
@@ -1112,6 +1253,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteMasterItem = (id: string) => {
     const item = items.find(i => i.id === id);
     setItems(prev => prev.filter(i => i.id !== id));
+    deleteFromTable('master_items', 'id', id).catch(console.warn);
     addAuditLog('Hapus Master Barang', 'Inventori', `Menghapus barang ${item?.name || id}`);
     showToast('info', 'Barang Dihapus', 'Data barang telah dihapus dari sistem');
   };
@@ -1125,6 +1267,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status
     };
     setUniforms(prev => [...prev, newUniform]);
+    upsertToTable('uniform_items', transformUniformToDB(newUniform)).catch(console.warn);
     addAuditLog('Tambah Master Seragam', 'Seragam', `Menambahkan seragam ${data.name} size ${data.size}`);
     showToast('success', 'Seragam Ditambahkan', `${data.name} (${data.size}) tersimpan`);
   };
@@ -1134,6 +1277,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (u.id === id) {
         const updated = { ...u, ...data };
         updated.status = updated.stock === 0 ? 'out_of_stock' : (updated.stock <= updated.minStock ? 'low_stock' : 'available');
+        upsertToTable('uniform_items', transformUniformToDB(updated)).catch(console.warn);
         return updated;
       }
       return u;
@@ -1144,6 +1288,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteUniform = (id: string) => {
     setUniforms(prev => prev.filter(u => u.id !== id));
+    deleteFromTable('uniform_items', 'id', id).catch(console.warn);
     addAuditLog('Hapus Master Seragam', 'Seragam', `Menghapus seragam ID ${id}`);
     showToast('info', 'Seragam Dihapus', 'Seragam dihapus dari katalog');
   };
@@ -1165,7 +1310,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const after = before + quantity;
       const newStatus = after === 0 ? 'out_of_stock' : (after <= target.minStock ? 'low_stock' : 'available');
 
-      setItems(prev => prev.map(i => i.id === itemId ? { ...i, stock: after, status: newStatus } : i));
+      const updatedItem = { ...target, stock: after, status: newStatus };
+      setItems(prev => prev.map(i => i.id === itemId ? updatedItem : i));
+      upsertToTable('master_items', transformItemToDB(updatedItem)).catch(console.warn);
 
       const trx: StockTransaction = {
         id: `stk-${Date.now()}`,
@@ -1186,6 +1333,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         notes
       };
       setStockTransactions(prev => [trx, ...prev]);
+      upsertToTable('stock_transactions', transformStockTransactionToDB(trx)).catch(console.warn);
     } else {
       const target = uniforms.find(u => u.id === itemId);
       if (!target) return;
@@ -1193,7 +1341,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const after = before + quantity;
       const newStatus = after === 0 ? 'out_of_stock' : (after <= target.minStock ? 'low_stock' : 'available');
 
-      setUniforms(prev => prev.map(u => u.id === itemId ? { ...u, stock: after, status: newStatus } : u));
+      const updatedUniform = { ...target, stock: after, status: newStatus };
+      setUniforms(prev => prev.map(u => u.id === itemId ? updatedUniform : u));
+      upsertToTable('uniform_items', transformUniformToDB(updatedUniform)).catch(console.warn);
 
       const trx: StockTransaction = {
         id: `stk-${Date.now()}`,
@@ -1214,6 +1364,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         notes
       };
       setStockTransactions(prev => [trx, ...prev]);
+      upsertToTable('stock_transactions', transformStockTransactionToDB(trx)).catch(console.warn);
     }
 
     addAuditLog('Stock In', 'Inventori', `Pemasukan stok (${quantity}) untuk item ${itemId} via ${sourceReason}`);
@@ -1237,7 +1388,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const after = Math.max(0, before - quantity);
       const newStatus = after === 0 ? 'out_of_stock' : (after <= target.minStock ? 'low_stock' : 'available');
 
-      setItems(prev => prev.map(i => i.id === itemId ? { ...i, stock: after, status: newStatus } : i));
+      const updatedItem = { ...target, stock: after, status: newStatus };
+      setItems(prev => prev.map(i => i.id === itemId ? updatedItem : i));
+      upsertToTable('master_items', transformItemToDB(updatedItem)).catch(console.warn);
 
       const trx: StockTransaction = {
         id: `stk-${Date.now()}`,
@@ -1258,6 +1411,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         notes
       };
       setStockTransactions(prev => [trx, ...prev]);
+      upsertToTable('stock_transactions', transformStockTransactionToDB(trx)).catch(console.warn);
 
       if (after <= target.minStock) {
         setNotifications(prev => [{
@@ -1277,7 +1431,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const after = Math.max(0, before - quantity);
       const newStatus = after === 0 ? 'out_of_stock' : (after <= target.minStock ? 'low_stock' : 'available');
 
-      setUniforms(prev => prev.map(u => u.id === itemId ? { ...u, stock: after, status: newStatus } : u));
+      const updatedUniform = { ...target, stock: after, status: newStatus };
+      setUniforms(prev => prev.map(u => u.id === itemId ? updatedUniform : u));
+      upsertToTable('uniform_items', transformUniformToDB(updatedUniform)).catch(console.warn);
 
       const trx: StockTransaction = {
         id: `stk-${Date.now()}`,
@@ -1298,6 +1454,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         notes
       };
       setStockTransactions(prev => [trx, ...prev]);
+      upsertToTable('stock_transactions', transformStockTransactionToDB(trx)).catch(console.warn);
     }
 
     addAuditLog('Stock Out', 'Inventori', `Pengeluaran stok (${quantity}) untuk item ${itemId} (${sourceReason})`);
@@ -1319,7 +1476,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const diff = physicalCount - before;
       const newStatus = physicalCount === 0 ? 'out_of_stock' : (physicalCount <= target.minStock ? 'low_stock' : 'available');
 
-      setItems(prev => prev.map(i => i.id === itemId ? { ...i, stock: physicalCount, status: newStatus } : i));
+      const updatedItem = { ...target, stock: physicalCount, status: newStatus };
+      setItems(prev => prev.map(i => i.id === itemId ? updatedItem : i));
+      upsertToTable('master_items', transformItemToDB(updatedItem)).catch(console.warn);
 
       const trx: StockTransaction = {
         id: `stk-${Date.now()}`,
@@ -1340,6 +1499,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         notes: `Opname Fisik: ${physicalCount} ${target.unitMeasure} (Selisih: ${diff > 0 ? `+${diff}` : diff}). Catatan: ${notes}`
       };
       setStockTransactions(prev => [trx, ...prev]);
+      upsertToTable('stock_transactions', transformStockTransactionToDB(trx)).catch(console.warn);
     } else {
       const target = uniforms.find(u => u.id === itemId);
       if (!target) return;
@@ -1347,7 +1507,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const diff = physicalCount - before;
       const newStatus = physicalCount === 0 ? 'out_of_stock' : (physicalCount <= target.minStock ? 'low_stock' : 'available');
 
-      setUniforms(prev => prev.map(u => u.id === itemId ? { ...u, stock: physicalCount, status: newStatus } : u));
+      const updatedUniform = { ...target, stock: physicalCount, status: newStatus };
+      setUniforms(prev => prev.map(u => u.id === itemId ? updatedUniform : u));
+      upsertToTable('uniform_items', transformUniformToDB(updatedUniform)).catch(console.warn);
 
       const trx: StockTransaction = {
         id: `stk-${Date.now()}`,
@@ -1368,6 +1530,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         notes: `Opname Fisik: ${physicalCount} Pcs (Selisih: ${diff > 0 ? `+${diff}` : diff}). ${notes}`
       };
       setStockTransactions(prev => [trx, ...prev]);
+      upsertToTable('stock_transactions', transformStockTransactionToDB(trx)).catch(console.warn);
     }
 
     addAuditLog('Stock Opname', 'Inventori', `Stock opname untuk ${itemId}: Fisik=${physicalCount}`);
@@ -1387,12 +1550,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: loc.status || 'Aktif'
     };
     setWaterLocations(prev => [...prev, newLoc]);
+    upsertToTable('water_locations', transformWaterLocationToDB(newLoc)).catch(console.warn);
     addAuditLog('Tambah Lokasi Galon', 'Air Galon', `Titik Galon baru: ${newLoc.code} - ${loc.roomName} (${loc.unit})`);
     showToast('success', 'Titik Galon Ditambahkan', `${newLoc.code} - ${loc.roomName}`);
   };
 
   const updateWaterLocation = (id: string, data: Partial<WaterLocation>) => {
-    setWaterLocations(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
+    setWaterLocations(prev => prev.map(l => {
+      if (l.id === id) {
+        const updated = { ...l, ...data };
+        upsertToTable('water_locations', transformWaterLocationToDB(updated)).catch(console.warn);
+        return updated;
+      }
+      return l;
+    }));
     const target = waterLocations.find(l => l.id === id);
     addAuditLog('Ubah Lokasi Galon', 'Air Galon', `Memperbarui data titik galon: ${target?.roomName || id}`);
     showToast('success', 'Titik Galon Diperbarui', 'Data penempatan galon & dispenser telah disimpan');
@@ -1401,12 +1572,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteWaterLocation = (id: string) => {
     const target = waterLocations.find(l => l.id === id);
     setWaterLocations(prev => prev.filter(l => l.id !== id));
+    deleteFromTable('water_locations', 'id', id).catch(console.warn);
     addAuditLog('Hapus Lokasi Galon', 'Air Galon', `Menghapus titik galon ${target?.code || ''} - ${target?.roomName || id}`);
     showToast('info', 'Titik Galon Dihapus', `${target?.roomName || 'Lokasi'} telah dihapus`);
   };
 
   const updateWaterInventory = (data: Partial<WaterInventory>) => {
-    setWaterInventory(prev => ({ ...prev, ...data }));
+    setWaterInventory(prev => {
+      const updated = { ...prev, ...data };
+      upsertToTable('water_inventory', transformWaterInventoryToDB(updated)).catch(console.warn);
+      return updated;
+    });
     showToast('success', 'Inventori Galon Diperbarui', 'Jumlah stok galon telah disesuaikan');
   };
 
@@ -1430,18 +1606,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const deltaFilled = newFilled - oldFilled; // if positive, more filled taken (reduce filled stock)
     const deltaReturned = newReturned - oldReturned; // if positive, more empty returned (increase empty stock)
 
-    setWaterInventory(prev => ({
-      ...prev,
-      filledGallons: Math.max(0, prev.filledGallons - deltaFilled),
-      emptyGallons: Math.max(0, prev.emptyGallons + deltaReturned),
-      inDistribution: Math.max(0, prev.inDistribution + (deltaFilled - deltaReturned))
-    }));
+    const updatedWaterInv = {
+      ...waterInventory,
+      filledGallons: Math.max(0, waterInventory.filledGallons - deltaFilled),
+      emptyGallons: Math.max(0, waterInventory.emptyGallons + deltaReturned),
+      inDistribution: Math.max(0, waterInventory.inDistribution + (deltaFilled - deltaReturned))
+    };
+    setWaterInventory(updatedWaterInv);
+    upsertToTable('water_inventory', transformWaterInventoryToDB(updatedWaterInv)).catch(console.warn);
 
     if (req.waterDetail.locationId) {
-      setWaterLocations(prev => prev.map(loc => loc.id === req.waterDetail?.locationId ? {
-        ...loc,
-        activeGallons: Math.max(1, loc.activeGallons + (deltaFilled - deltaReturned))
-      } : loc));
+      setWaterLocations(prev => prev.map(loc => {
+        if (loc.id === req.waterDetail?.locationId) {
+          const updatedLoc = {
+            ...loc,
+            activeGallons: Math.max(1, loc.activeGallons + (deltaFilled - deltaReturned))
+          };
+          upsertToTable('water_locations', transformWaterLocationToDB(updatedLoc)).catch(console.warn);
+          return updatedLoc;
+        }
+        return loc;
+      }));
     }
 
     const updatedWaterDetail: WaterDetail = {
@@ -1451,12 +1636,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notes: data.notes ?? req.waterDetail.notes
     };
 
-    setRequests(prev => prev.map(r => r.id === requestId ? {
-      ...r,
-      pickedUpBy: data.pickedUpBy || r.pickedUpBy,
-      notes: data.notes ?? r.notes,
+    const updatedReq: ServiceRequest = {
+      ...req,
+      pickedUpBy: data.pickedUpBy || req.pickedUpBy,
+      notes: data.notes ?? req.notes,
       waterDetail: updatedWaterDetail
-    } : r));
+    };
+
+    setRequests(prev => prev.map(r => r.id === requestId ? updatedReq : r));
+    upsertToTable('service_requests', transformRequestToDB(updatedReq)).catch(console.warn);
 
     addAuditLog(
       'Koreksi Data Galon',
@@ -1477,13 +1665,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `wplog-${Date.now()}`
     };
     setWaterProviderLogs(prev => [newLog, ...prev]);
+    upsertToTable('water_provider_logs', newLog).catch(console.warn);
 
     // Galon isi bertambah di RR, galon kosong berkurang karena ditukar provider
-    setWaterInventory(prev => ({
-      ...prev,
-      filledGallons: prev.filledGallons + logData.filledReceived,
-      emptyGallons: Math.max(0, prev.emptyGallons - logData.emptyReturned)
-    }));
+    const updatedInv = {
+      ...waterInventory,
+      filledGallons: waterInventory.filledGallons + logData.filledReceived,
+      emptyGallons: Math.max(0, waterInventory.emptyGallons - logData.emptyReturned)
+    };
+    setWaterInventory(updatedInv);
+    upsertToTable('water_inventory', transformWaterInventoryToDB(updatedInv)).catch(console.warn);
 
     addAuditLog(
       'Penerimaan Provider Galon',
@@ -1530,9 +1721,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setWaterOpnameRecords(prev => [opnRecord, ...prev]);
+    upsertToTable('water_opname_records', opnRecord).catch(console.warn);
 
-    setWaterInventory(prev => ({
-      ...prev,
+    const updatedInv: WaterInventory = {
+      ...waterInventory,
       initialTotalAssets: data.initialTotalAssets,
       filledGallons: data.physicalFilled,
       emptyGallons: data.physicalEmpty,
@@ -1541,7 +1733,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lostGallons: data.physicalLost,
       lastOpnameDate: new Date().toISOString().slice(0, 10),
       lastOpnameBy: data.auditorName
-    }));
+    };
+    setWaterInventory(updatedInv);
+    upsertToTable('water_inventory', transformWaterInventoryToDB(updatedInv)).catch(console.warn);
 
     addAuditLog(
       'Stock Opname Galon',
@@ -1557,7 +1751,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateInitialWaterAssets = (total: number) => {
-    setWaterInventory(prev => ({ ...prev, initialTotalAssets: total }));
+    setWaterInventory(prev => {
+      const updated = { ...prev, initialTotalAssets: total };
+      upsertToTable('water_inventory', transformWaterInventoryToDB(updated)).catch(console.warn);
+      return updated;
+    });
     addAuditLog('Update Aset Galon Awal', 'Air Galon', `Jumlah galon awal aset diubah menjadi ${total} unit`);
     showToast('success', 'Jumlah Aset Awal Diperbarui', `Total modal galon awal: ${total} unit`);
   };
@@ -1566,6 +1764,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addUser = (userData: Omit<User, 'id'>) => {
     const newUser: User = { ...userData, id: `usr-${Date.now()}` };
     setUsers(prev => [...prev, newUser]);
+    upsertToTable('users', transformUserToDB(newUser)).catch(console.warn);
     addAuditLog('Tambah User', 'Pengaturan', `User baru ${newUser.name} (${newUser.role})`);
     showToast('success', 'Pengguna Ditambahkan', newUser.name);
   };
@@ -1576,10 +1775,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Check existing emails/usernames to prevent duplicates or update existing
     let addedCount = 0;
     const timestamp = Date.now();
+    const newItems: User[] = [];
     
     setUsers(prev => {
       const existingEmails = new Set(prev.map(u => u.email.toLowerCase().trim()));
-      const newItems: User[] = [];
 
       usersList.forEach((userData, index) => {
         const cleanEmail = userData.email.toLowerCase().trim();
@@ -1596,12 +1795,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return [...prev, ...newItems];
     });
 
+    if (newItems.length > 0) {
+      upsertToTable('users', newItems.map(transformUserToDB)).catch(console.warn);
+    }
+
     addAuditLog('Import User CSV', 'Pengaturan', `Import massal ${usersList.length} baris CSV (Berhasil: ${addedCount} user baru)`);
     return addedCount;
   };
 
   const updateUser = (id: string, data: Partial<User>) => {
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, ...data } : u));
+    setUsers(prev => prev.map(u => {
+      if (u.id === id) {
+        const updated = { ...u, ...data };
+        upsertToTable('users', transformUserToDB(updated)).catch(console.warn);
+        return updated;
+      }
+      return u;
+    }));
     if (currentUser?.id === id) {
       setCurrentUser(prev => prev ? { ...prev, ...data } : null);
     }
@@ -1624,7 +1834,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetUserPassword = (userId: string, newPassword = 'password123'): string => {
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, password: newPassword } : u));
+    setUsers(prev => prev.map(u => {
+      if (u.id === userId) {
+        const updated = { ...u, password: newPassword };
+        upsertToTable('users', transformUserToDB(updated)).catch(console.warn);
+        return updated;
+      }
+      return u;
+    }));
     if (currentUser?.id === userId) {
       setCurrentUser(prev => prev ? { ...prev, password: newPassword } : null);
     }
@@ -1637,13 +1854,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateRolePermissions = (role: UserRole, permissions: Partial<RolePermissions>) => {
     setRoleConfigs(prev => prev.map(rc => {
       if (rc.role === role) {
-        return {
+        const updated = {
           ...rc,
           permissions: {
             ...rc.permissions,
             ...permissions
           }
         };
+        upsertToTable('role_configs', transformRoleConfigToDB(updated)).catch(console.warn);
+        return updated;
       }
       return rc;
     }));
@@ -1653,6 +1872,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const resetRolePermissions = () => {
     setRoleConfigs(INITIAL_ROLES);
+    upsertToTable('role_configs', INITIAL_ROLES.map(transformRoleConfigToDB)).catch(console.warn);
     addAuditLog('Reset Hak Akses Role', 'Pengaturan Hak Akses', 'Mengembalikan hak akses seluruh role ke default');
     showToast('info', 'Hak Akses Direset', 'Seluruh matriks izin kembali ke default Sekolah Lazuardi');
   };
@@ -1660,19 +1880,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addUnit = (data: Omit<MasterUnit, 'id'>) => {
     const newUnit: MasterUnit = { ...data, id: `unit-${Date.now()}` };
     setUnits(prev => [...prev, newUnit]);
+    upsertToTable('master_units', transformUnitToDB(newUnit)).catch(console.warn);
     addAuditLog('Tambah Unit', 'Pengaturan Unit', `Menambahkan master unit ${data.name} (${data.code})`);
     showToast('success', 'Unit Ditambahkan', `${data.name} (${data.code})`);
   };
 
   const updateUnit = (id: string, data: Partial<MasterUnit>) => {
     const existing = units.find(u => u.id === id);
-    setUnits(prev => prev.map(u => u.id === id ? { ...u, ...data } : u));
+    setUnits(prev => prev.map(u => {
+      if (u.id === id) {
+        const updated = { ...u, ...data };
+        upsertToTable('master_units', transformUnitToDB(updated)).catch(console.warn);
+        return updated;
+      }
+      return u;
+    }));
     
     // If unit name or code changed, sync with departments
     if (existing && (data.name || data.code)) {
       const oldUnitName = existing.name;
       const newUnitName = data.name || existing.name;
-      setDepartments(prev => prev.map(d => d.unitId === id || d.unitName === oldUnitName ? { ...d, unitName: newUnitName } : d));
+      setDepartments(prev => prev.map(d => {
+        if (d.unitId === id || d.unitName === oldUnitName) {
+          const updatedD = { ...d, unitName: newUnitName };
+          upsertToTable('master_departments', transformDeptToDB(updatedD)).catch(console.warn);
+          return updatedD;
+        }
+        return d;
+      }));
     }
 
     addAuditLog('Update Unit', 'Pengaturan Unit', `Memperbarui data master unit ID ${id}`);
@@ -1683,6 +1918,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = units.find(u => u.id === id);
     if (!target) return;
     setUnits(prev => prev.filter(u => u.id !== id));
+    deleteFromTable('master_units', 'id', id).catch(console.warn);
     addAuditLog('Hapus Unit', 'Pengaturan Unit', `Menghapus master unit ${target.name} (${target.code})`);
     showToast('info', 'Unit Dihapus', `Unit ${target.name} telah dihapus`);
   };
@@ -1690,12 +1926,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addDepartment = (data: Omit<MasterDepartment, 'id'>) => {
     const newDept: MasterDepartment = { ...data, id: `dept-${Date.now()}` };
     setDepartments(prev => [...prev, newDept]);
+    upsertToTable('master_departments', transformDeptToDB(newDept)).catch(console.warn);
     addAuditLog('Tambah Departemen', 'Pengaturan Departemen', `Menambahkan departemen ${data.name} pada unit ${data.unitName}`);
     showToast('success', 'Departemen Ditambahkan', `${data.name} (${data.unitName})`);
   };
 
   const updateDepartment = (id: string, data: Partial<MasterDepartment>) => {
-    setDepartments(prev => prev.map(d => d.id === id ? { ...d, ...data } : d));
+    setDepartments(prev => prev.map(d => {
+      if (d.id === id) {
+        const updated = { ...d, ...data };
+        upsertToTable('master_departments', transformDeptToDB(updated)).catch(console.warn);
+        return updated;
+      }
+      return d;
+    }));
     addAuditLog('Update Departemen', 'Pengaturan Departemen', `Memperbarui data departemen ID ${id}`);
     showToast('success', 'Departemen Diperbarui', 'Perubahan departemen tersimpan');
   };
@@ -1704,6 +1948,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = departments.find(d => d.id === id);
     if (!target) return;
     setDepartments(prev => prev.filter(d => d.id !== id));
+    deleteFromTable('master_departments', 'id', id).catch(console.warn);
     addAuditLog('Hapus Departemen', 'Pengaturan Departemen', `Menghapus departemen ${target.name} (${target.unitName})`);
     showToast('info', 'Departemen Dihapus', `Departemen ${target.name} telah dihapus`);
   };
@@ -1711,12 +1956,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addSupplier = (data: Omit<MasterSupplier, 'id'>) => {
     const newSup: MasterSupplier = { ...data, id: `sup-${Date.now()}` };
     setSuppliers(prev => [...prev, newSup]);
+    upsertToTable('master_suppliers', transformSupplierToDB(newSup)).catch(console.warn);
     showToast('success', 'Supplier Ditambahkan', data.name);
   };
 
   const addLocation = (data: Omit<MasterLocation, 'id'>) => {
     const newLoc: MasterLocation = { ...data, id: `loc-${Date.now()}` };
     setLocations(prev => [...prev, newLoc]);
+    upsertToTable('master_locations', transformLocationToDB(newLoc)).catch(console.warn);
     showToast('success', 'Lokasi Ditambahkan', data.name);
   };
 

@@ -122,21 +122,12 @@ export const transformUniformFromDB = (row: any): UniformItem => ({
 
 export const transformWaterLocationToDB = (w: WaterLocation) => ({
   id: w.id,
-  code: w.code || '',
   unit: w.unit,
-  unit_id: w.unitId || '',
-  department: w.department || '',
-  department_id: w.departmentId || '',
   room_name: w.roomName,
-  building: w.building || '',
   floor: w.floor || '',
   dispenser_count: Number(w.dispenserCount || 1),
-  dispenser_brand: w.dispenserBrand || '',
   active_gallons: Number(w.activeGallons || 1),
   empty_gallons: Number(w.emptyGallons || 0),
-  pic_name: w.picName || '',
-  status: w.status || 'Aktif',
-  notes: w.notes || '',
   last_refill_date: w.lastRefillDate || null,
 });
 
