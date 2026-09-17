@@ -84,7 +84,11 @@ import {
   transformLocationToDB,
   transformLocationFromDB,
   transformRoleConfigToDB,
-  transformRoleConfigFromDB
+  transformRoleConfigFromDB,
+  transformWaterProviderLogToDB,
+  transformWaterProviderLogFromDB,
+  transformWaterOpnameRecordToDB,
+  transformWaterOpnameRecordFromDB
 } from '../services/supabaseService';
 
 interface ToastInfo {
@@ -122,6 +126,7 @@ interface AppContextType {
   isSyncingToSupabase: boolean;
   syncAllToSupabase: () => Promise<{ success: boolean; message: string; details: Record<string, number> }>;
   refreshSupabaseConnection: () => Promise<void>;
+  fetchFreshData: (silent?: boolean) => Promise<void>;
   
   // Auth & User Switch
   login: (emailOrUsername: string, roleOrPassword?: string) => boolean;
@@ -380,8 +385,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             fetchAllFromTable<any>('uniform_items', transformUniformFromDB),
             fetchAllFromTable<any>('water_locations', transformWaterLocationFromDB),
             fetchAllFromTable<any>('water_inventory', transformWaterInventoryFromDB),
-            fetchAllFromTable<any>('water_provider_logs'),
-            fetchAllFromTable<any>('water_opname_records'),
+            fetchAllFromTable<WaterProviderLog>('water_provider_logs', transformWaterProviderLogFromDB),
+            fetchAllFromTable<WaterOpnameRecord>('water_opname_records', transformWaterOpnameRecordFromDB),
             fetchAllFromTable<any>('service_requests', transformRequestFromDB),
             fetchAllFromTable<any>('stock_transactions', transformStockTransactionFromDB),
             fetchAllFromTable<any>('master_units', transformUnitFromDB),
@@ -490,7 +495,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 return remoteReq;
               });
               const remainingRemote = Array.from(remoteMap.values());
-              return [...remainingRemote, ...updated];
+              return [...remainingRemote, ...updated].sort(
+                (a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()
+              );
             });
           }
 
@@ -592,17 +599,107 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Fetch fresh transaction and inventory data from Supabase on demand or in background
+  const fetchFreshData = async (silent = true) => {
+    if (!supabase || supabaseStatus !== 'connected') return;
+    try {
+      const [
+        remoteRequests,
+        remoteWaterInv,
+        remoteWaterLocs,
+        remoteWaterLogs,
+        remoteWaterOpname,
+        remoteStockTx
+      ] = await Promise.all([
+        fetchAllFromTable<ServiceRequest>('service_requests', transformRequestFromDB),
+        fetchAllFromTable<WaterInventory>('water_inventory', transformWaterInventoryFromDB),
+        fetchAllFromTable<WaterLocation>('water_locations', transformWaterLocationFromDB),
+        fetchAllFromTable<WaterProviderLog>('water_provider_logs', transformWaterProviderLogFromDB),
+        fetchAllFromTable<WaterOpnameRecord>('water_opname_records', transformWaterOpnameRecordFromDB),
+        fetchAllFromTable<StockTransaction>('stock_transactions', transformStockTransactionFromDB)
+      ]);
+
+      if (remoteRequests && remoteRequests.length > 0) {
+        setRequests(prev => {
+          const remoteMap = new Map(remoteRequests.map(r => [r.id, r]));
+          const merged = [...remoteRequests];
+          for (const localReq of prev) {
+            if (!remoteMap.has(localReq.id)) {
+              merged.push(localReq);
+            }
+          }
+          return merged.sort(
+            (a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()
+          );
+        });
+      }
+
+      if (remoteWaterInv && remoteWaterInv.length > 0) {
+        setWaterInventory(remoteWaterInv[0]);
+      }
+
+      if (remoteWaterLocs && remoteWaterLocs.length > 0) {
+        setWaterLocations(remoteWaterLocs);
+      }
+
+      if (remoteWaterLogs && remoteWaterLogs.length > 0) {
+        setWaterProviderLogs(remoteWaterLogs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      }
+
+      if (remoteWaterOpname && remoteWaterOpname.length > 0) {
+        setWaterOpnameRecords(remoteWaterOpname.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      }
+
+      if (remoteStockTx && remoteStockTx.length > 0) {
+        setStockTransactions(remoteStockTx.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      }
+
+      if (!silent) {
+        showToast('success', 'Sinkronisasi Selesai', 'Data transaksi & stok telah diperbarui dari database pusat.');
+      }
+    } catch (err) {
+      console.warn('[Supabase] Error during background fresh data fetch:', err);
+    }
+  };
+
   useEffect(() => {
     refreshSupabaseConnection();
   }, []);
 
-  // Supabase Real-time listener for Service Requests
+  // Multi-device sync: auto-fetch on window focus or visibility change (e.g. switching browser tab or unlocking phone)
+  useEffect(() => {
+    if (supabaseStatus !== 'connected') return;
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        fetchFreshData(true);
+      }
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    // Periodic silent sync every 25 seconds if tab is active
+    const syncInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchFreshData(true);
+      }
+    }, 25000);
+
+    return () => {
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      clearInterval(syncInterval);
+    };
+  }, [supabaseStatus]);
+
+  // Supabase Real-time listener for Service Requests, Water, and Stock Transactions
   useEffect(() => {
     if (!supabase || supabaseStatus !== 'connected') return;
 
     try {
       const channel = supabase
-        .channel('public:service_requests_realtime')
+        .channel('public:cross_device_sync_realtime')
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'service_requests' },
@@ -611,7 +708,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const newReq = transformRequestFromDB(payload.new);
               setRequests(prev => {
                 if (prev.some(r => r.id === newReq.id)) return prev;
-                return [newReq, ...prev];
+                return [newReq, ...prev].sort(
+                  (a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()
+                );
               });
             } else if (payload.eventType === 'UPDATE' && payload.new) {
               const updatedReq = transformRequestFromDB(payload.new);
@@ -619,6 +718,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             } else if (payload.eventType === 'DELETE' && payload.old) {
               const oldId = payload.old.id;
               setRequests(prev => prev.filter(r => r.id !== oldId));
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'water_inventory' },
+          (payload) => {
+            if (payload.new) {
+              setWaterInventory(transformWaterInventoryFromDB(payload.new));
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'water_locations' },
+          (payload) => {
+            if (payload.eventType === 'INSERT' && payload.new) {
+              const newLoc = transformWaterLocationFromDB(payload.new);
+              setWaterLocations(prev => prev.some(l => l.id === newLoc.id) ? prev.map(l => l.id === newLoc.id ? newLoc : l) : [...prev, newLoc]);
+            } else if (payload.eventType === 'UPDATE' && payload.new) {
+              const updatedLoc = transformWaterLocationFromDB(payload.new);
+              setWaterLocations(prev => prev.map(l => l.id === updatedLoc.id ? updatedLoc : l));
+            } else if (payload.eventType === 'DELETE' && payload.old) {
+              setWaterLocations(prev => prev.filter(l => l.id !== payload.old.id));
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'water_provider_logs' },
+          (payload) => {
+            if (payload.eventType === 'INSERT' && payload.new) {
+              const newLog = transformWaterProviderLogFromDB(payload.new);
+              setWaterProviderLogs(prev => prev.some(l => l.id === newLog.id) ? prev : [newLog, ...prev]);
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'water_opname_records' },
+          (payload) => {
+            if (payload.eventType === 'INSERT' && payload.new) {
+              const newOpn = transformWaterOpnameRecordFromDB(payload.new);
+              setWaterOpnameRecords(prev => prev.some(o => o.id === newOpn.id) ? prev : [newOpn, ...prev]);
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'stock_transactions' },
+          (payload) => {
+            if (payload.eventType === 'INSERT' && payload.new) {
+              const newTx = transformStockTransactionFromDB(payload.new);
+              setStockTransactions(prev => prev.some(t => t.id === newTx.id) ? prev : [newTx, ...prev]);
             }
           }
         )
@@ -907,9 +1060,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const prefix = prefixMap[type] || 'REQ';
     const year = new Date().getFullYear();
-    const count = requests.filter(r => r.serviceType === type).length + 1;
-    const padded = String(count).padStart(5, '0');
-    return `${prefix}-${year}-${padded}`;
+
+    // Find highest existing sequence number for this prefix & year
+    let maxNum = 0;
+    const regex = new RegExp(`^${prefix}-${year}-(\\d+)$`);
+    for (const r of requests) {
+      if (r.requestNumber) {
+        const match = r.requestNumber.match(regex);
+        if (match && match[1]) {
+          const num = parseInt(match[1], 10);
+          if (num > maxNum) maxNum = num;
+        }
+      }
+    }
+
+    let candidate = maxNum + 1;
+    let candidateStr = `${prefix}-${year}-${String(candidate).padStart(5, '0')}`;
+    while (requests.some(r => r.requestNumber === candidateStr)) {
+      candidate++;
+      candidateStr = `${prefix}-${year}-${String(candidate).padStart(5, '0')}`;
+    }
+    return candidateStr;
   };
 
   // Helper for Stock Transaction Number
@@ -923,10 +1094,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createRequest = (data: Omit<ServiceRequest, 'id' | 'requestNumber' | 'requestDate' | 'status'>): ServiceRequest => {
     const reqNumber = generateRequestNumber(data.serviceType);
     const isWater = data.serviceType === 'air_galon';
+    const uniqueId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
     const newRequest: ServiceRequest = {
       ...data,
-      id: `req-${Date.now()}`,
+      id: uniqueId,
       requestNumber: reqNumber,
       requestDate: new Date().toISOString(),
       status: isWater ? 'Selesai' : 'Diajukan',
@@ -938,9 +1110,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setRequests(prev => [newRequest, ...prev]);
 
     // Save immediately to Supabase
-    upsertToTable('service_requests', transformRequestToDB(newRequest)).catch(err => {
-      console.warn('[Supabase] Failed to persist new service request:', err);
-    });
+    upsertToTable('service_requests', transformRequestToDB(newRequest))
+      .then(ok => {
+        if (ok) {
+          console.log(`[Supabase] Service request ${reqNumber} (${data.serviceType}) persisted to cloud successfully.`);
+        } else {
+          console.warn(`[Supabase] Service request ${reqNumber} failed to persist to cloud.`);
+        }
+      })
+      .catch(err => {
+        console.warn('[Supabase] Failed to persist new service request:', err);
+      });
 
     // Update Water Inventory directly if air_galon (Pengambilan Langsung tanpa proses otorisasi)
     if (isWater && data.waterDetail) {
@@ -1896,7 +2076,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `wplog-${Date.now()}`
     };
     setWaterProviderLogs(prev => [newLog, ...prev]);
-    upsertToTable('water_provider_logs', newLog).catch(console.warn);
+    upsertToTable('water_provider_logs', transformWaterProviderLogToDB(newLog)).catch(console.warn);
 
     // Galon isi bertambah di RR, galon kosong berkurang karena ditukar provider
     const updatedInv = {
@@ -1952,7 +2132,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setWaterOpnameRecords(prev => [opnRecord, ...prev]);
-    upsertToTable('water_opname_records', opnRecord).catch(console.warn);
+    upsertToTable('water_opname_records', transformWaterOpnameRecordToDB(opnRecord)).catch(console.warn);
 
     const updatedInv: WaterInventory = {
       ...waterInventory,
@@ -2256,6 +2436,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isSyncingToSupabase,
       syncAllToSupabase,
       refreshSupabaseConnection,
+      fetchFreshData,
       login,
       loginWithGoogleEmail,
       logout,

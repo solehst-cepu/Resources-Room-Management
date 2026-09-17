@@ -174,65 +174,162 @@ export const transformWaterInventoryFromDB = (row: any): WaterInventory => ({
   lastOpnameBy: row.last_opname_by || undefined,
 });
 
-export const transformRequestToDB = (r: ServiceRequest) => ({
-  id: r.id,
-  request_number: r.requestNumber,
-  service_type: r.serviceType,
-  user_id: r.userId,
-  user_name: r.userName,
-  user_email: r.userEmail,
-  unit: r.unit,
-  department: r.department,
-  request_date: r.requestDate,
-  status: r.status,
-  urgency: r.urgency || 'Biasa',
-  purpose: r.purpose || '',
-  notes: r.notes || '',
-  items: r.items || [],
-  photocopy_detail: r.photocopyDetail || null,
-  laminating_detail: r.laminatingDetail || null,
-  water_detail: r.waterDetail || null,
-  approved_by: r.approvedBy || null,
-  approval_date: r.approvalDate || null,
-  rejection_reason: r.rejectionReason || null,
-  processed_by: r.processedBy || null,
-  completed_date: r.completedDate || null,
-  picked_up_by: r.pickedUpBy || null,
-  admin_notes: r.adminNotes || null,
-  email_sent_to_head: Boolean(r.emailSentToHead),
-  email_sent_date: r.emailSentDate || null,
-  email_sent_recipient: r.emailSentRecipient || null,
+export const transformWaterProviderLogToDB = (l: WaterProviderLog) => ({
+  id: l.id,
+  date: l.date,
+  delivery_number: l.deliveryNumber,
+  supplier_name: l.supplierName,
+  driver_name: l.driverName || null,
+  filled_received: Number(l.filledReceived || 0),
+  empty_returned: Number(l.emptyReturned || 0),
+  received_by: l.receivedBy || null,
+  notes: l.notes || null,
 });
 
-export const transformRequestFromDB = (row: any): ServiceRequest => ({
+export const transformWaterProviderLogFromDB = (row: any): WaterProviderLog => ({
   id: row.id,
-  requestNumber: row.request_number,
-  serviceType: row.service_type,
-  userId: row.user_id,
-  userName: row.user_name,
-  userEmail: row.user_email,
-  unit: row.unit,
-  department: row.department,
-  requestDate: row.request_date,
-  status: row.status,
-  urgency: row.urgency || 'Biasa',
-  purpose: row.purpose || '',
-  notes: row.notes || '',
-  items: Array.isArray(row.items) ? row.items : [],
-  photocopyDetail: row.photocopy_detail || undefined,
-  laminatingDetail: row.laminating_detail || undefined,
-  waterDetail: row.water_detail || undefined,
-  approvedBy: row.approved_by || undefined,
-  approvalDate: row.approval_date || undefined,
-  rejectionReason: row.rejection_reason || undefined,
-  processedBy: row.processed_by || undefined,
-  completedDate: row.completed_date || undefined,
-  pickedUpBy: row.picked_up_by || undefined,
-  adminNotes: row.admin_notes || undefined,
-  emailSentToHead: Boolean(row.email_sent_to_head),
-  emailSentDate: row.email_sent_date || undefined,
-  emailSentRecipient: row.email_sent_recipient || undefined,
+  date: row.date,
+  deliveryNumber: row.delivery_number,
+  supplierName: row.supplier_name,
+  driverName: row.driver_name || undefined,
+  filledReceived: Number(row.filled_received || 0),
+  emptyReturned: Number(row.empty_returned || 0),
+  receivedBy: row.received_by || undefined,
+  notes: row.notes || undefined,
 });
+
+export const transformWaterOpnameRecordToDB = (o: WaterOpnameRecord) => ({
+  id: o.id,
+  opname_number: o.opnameNumber,
+  date: o.date,
+  auditor_name: o.auditorName,
+  initial_total_assets: Number(o.initialTotalAssets || 0),
+  physical_filled: Number(o.physicalFilled || 0),
+  physical_empty: Number(o.physicalEmpty || 0),
+  physical_in_rooms: Number(o.physicalInRooms || 0),
+  physical_damaged: Number(o.physicalDamaged || 0),
+  physical_lost: Number(o.physicalLost || 0),
+  total_physical: Number(o.totalPhysical || 0),
+  system_total: Number(o.systemTotal || 0),
+  variance: Number(o.variance || 0),
+  notes: o.notes || null,
+});
+
+export const transformWaterOpnameRecordFromDB = (row: any): WaterOpnameRecord => ({
+  id: row.id,
+  opnameNumber: row.opname_number,
+  date: row.date,
+  auditorName: row.auditor_name,
+  initialTotalAssets: Number(row.initial_total_assets || 0),
+  physicalFilled: Number(row.physical_filled || 0),
+  physicalEmpty: Number(row.physical_empty || 0),
+  physicalInRooms: Number(row.physical_in_rooms || 0),
+  physicalDamaged: Number(row.physical_damaged || 0),
+  physicalLost: Number(row.physical_lost || 0),
+  totalPhysical: Number(row.total_physical || 0),
+  systemTotal: Number(row.system_total || 0),
+  variance: Number(row.variance || 0),
+  notes: row.notes || undefined,
+});
+
+export const transformRequestToDB = (r: ServiceRequest) => {
+  // If email report info is present, embed it safely in admin_notes or a clean marker
+  // so that if the table doesn't have email_sent_* columns, the data is still 100% preserved!
+  let adminNotes = r.adminNotes || '';
+  if (r.emailSentToHead && !adminNotes.includes('<!--EMAIL_META:')) {
+    const meta = JSON.stringify({
+      sent: true,
+      date: r.emailSentDate || new Date().toISOString(),
+      to: r.emailSentRecipient || ''
+    });
+    adminNotes = adminNotes ? `${adminNotes} <!--EMAIL_META:${meta}-->` : `<!--EMAIL_META:${meta}-->`;
+  }
+
+  return {
+    id: r.id,
+    request_number: r.requestNumber,
+    service_type: r.serviceType,
+    user_id: r.userId,
+    user_name: r.userName,
+    user_email: r.userEmail,
+    unit: r.unit,
+    department: r.department,
+    request_date: r.requestDate,
+    status: r.status,
+    urgency: r.urgency || 'Biasa',
+    purpose: r.purpose || '',
+    notes: r.notes || '',
+    items: r.items || [],
+    photocopy_detail: r.photocopyDetail || null,
+    laminating_detail: r.laminatingDetail || null,
+    water_detail: r.waterDetail || null,
+    approved_by: r.approvedBy || null,
+    approval_date: r.approvalDate || null,
+    rejection_reason: r.rejectionReason || null,
+    processed_by: r.processedBy || null,
+    completed_date: r.completedDate || null,
+    picked_up_by: r.pickedUpBy || null,
+    admin_notes: adminNotes || null,
+    email_sent_to_head: Boolean(r.emailSentToHead),
+    email_sent_date: r.emailSentDate || null,
+    email_sent_recipient: r.emailSentRecipient || null,
+  };
+};
+
+export const transformRequestFromDB = (row: any): ServiceRequest => {
+  let emailSentToHead = Boolean(row.email_sent_to_head);
+  let emailSentDate = row.email_sent_date || undefined;
+  let emailSentRecipient = row.email_sent_recipient || undefined;
+  let cleanAdminNotes = row.admin_notes || undefined;
+
+  // Extract from embedded metadata if columns didn't exist in Supabase table
+  if (cleanAdminNotes && cleanAdminNotes.includes('<!--EMAIL_META:')) {
+    const match = cleanAdminNotes.match(/<!--EMAIL_META:(\{.*?\})-->/);
+    if (match && match[1]) {
+      try {
+        const meta = JSON.parse(match[1]);
+        if (meta.sent) {
+          emailSentToHead = true;
+          if (meta.date && !emailSentDate) emailSentDate = meta.date;
+          if (meta.to && !emailSentRecipient) emailSentRecipient = meta.to;
+        }
+      } catch {
+        // ignore JSON parse error
+      }
+      cleanAdminNotes = cleanAdminNotes.replace(/<!--EMAIL_META:\{.*?\}-->/, '').trim() || undefined;
+    }
+  }
+
+  return {
+    id: row.id,
+    requestNumber: row.request_number,
+    serviceType: row.service_type,
+    userId: row.user_id,
+    userName: row.user_name,
+    userEmail: row.user_email,
+    unit: row.unit,
+    department: row.department,
+    requestDate: row.request_date,
+    status: row.status,
+    urgency: row.urgency || 'Biasa',
+    purpose: row.purpose || '',
+    notes: row.notes || '',
+    items: Array.isArray(row.items) ? row.items : [],
+    photocopyDetail: row.photocopy_detail || undefined,
+    laminatingDetail: row.laminating_detail || undefined,
+    waterDetail: row.water_detail || undefined,
+    approvedBy: row.approved_by || undefined,
+    approvalDate: row.approval_date || undefined,
+    rejectionReason: row.rejection_reason || undefined,
+    processedBy: row.processed_by || undefined,
+    completedDate: row.completed_date || undefined,
+    pickedUpBy: row.picked_up_by || undefined,
+    adminNotes: cleanAdminNotes,
+    emailSentToHead,
+    emailSentDate,
+    emailSentRecipient,
+  };
+};
 
 export const transformStockTransactionToDB = (st: StockTransaction) => ({
   id: st.id,
@@ -528,18 +625,57 @@ export async function fetchAllFromTable<T>(
   }
 }
 
+// Cache known unsupported columns per table to avoid repeated retry overhead
+const knownUnsupportedColumns = new Map<string, Set<string>>();
+
 export async function upsertToTable(tableName: string, data: any): Promise<boolean> {
-  try {
-    const { error } = await supabase.from(tableName).upsert(data);
-    if (error) {
+  if (!data) return false;
+
+  const stripCols = (obj: any, cols: Set<string>) => {
+    if (Array.isArray(obj)) {
+      return obj.map(item => {
+        const copy = { ...item };
+        cols.forEach(c => delete copy[c]);
+        return copy;
+      });
+    }
+    const copy = { ...obj };
+    cols.forEach(c => delete copy[c]);
+    return copy;
+  };
+
+  const badCols = knownUnsupportedColumns.get(tableName) || new Set<string>();
+  let currentPayload = badCols.size > 0 ? stripCols(data, badCols) : (Array.isArray(data) ? [...data] : { ...data });
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const { error } = await supabase.from(tableName).upsert(currentPayload);
+      if (!error) {
+        return true;
+      }
+
+      // Check if error is missing column in PostgREST schema cache (PGRST204)
+      const match = error.message && error.message.match(/Could not find the '([^']+)' column of '([^']+)'/i);
+      if (match && match[1]) {
+        const missingCol = match[1];
+        console.warn(`[Supabase] Auto-stripping missing column '${missingCol}' on [${tableName}] and retrying...`);
+        if (!knownUnsupportedColumns.has(tableName)) {
+          knownUnsupportedColumns.set(tableName, new Set());
+        }
+        knownUnsupportedColumns.get(tableName)!.add(missingCol);
+        currentPayload = stripCols(currentPayload, new Set([missingCol]));
+        continue;
+      }
+
       console.warn(`Supabase upsert error on table [${tableName}]:`, error.message);
       return false;
+    } catch (e: any) {
+      console.warn(`Supabase upsert exception on [${tableName}]:`, e);
+      return false;
     }
-    return true;
-  } catch (e) {
-    console.warn(`Supabase upsert exception on [${tableName}]:`, e);
-    return false;
   }
+
+  return false;
 }
 
 export async function deleteFromTable(
@@ -625,6 +761,20 @@ export async function syncAllInitialDataToSupabase(data: {
       const dbWaterInv = transformWaterInventoryToDB(data.waterInventory);
       const { error } = await supabase.from('water_inventory').upsert(dbWaterInv);
       if (!error) details['water_inventory'] = 1;
+    }
+
+    // 6b. Water Provider Logs
+    if (data.waterProviderLogs && data.waterProviderLogs.length > 0) {
+      const dbWLogs = data.waterProviderLogs.map(transformWaterProviderLogToDB);
+      const { error } = await supabase.from('water_provider_logs').upsert(dbWLogs);
+      if (!error) details['water_provider_logs'] = dbWLogs.length;
+    }
+
+    // 6c. Water Opname Records
+    if (data.waterOpnameRecords && data.waterOpnameRecords.length > 0) {
+      const dbWOpn = data.waterOpnameRecords.map(transformWaterOpnameRecordToDB);
+      const { error } = await supabase.from('water_opname_records').upsert(dbWOpn);
+      if (!error) details['water_opname_records'] = dbWOpn.length;
     }
 
     // 7. Service Requests

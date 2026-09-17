@@ -271,6 +271,11 @@ BEGIN
   END LOOP;
 END $$;
 
+-- Pastikan kolom notifikasi email di service_requests tersedia jika tabel sudah dibuat sebelumnya
+ALTER TABLE IF EXISTS public.service_requests ADD COLUMN IF NOT EXISTS email_sent_to_head BOOLEAN DEFAULT FALSE;
+ALTER TABLE IF EXISTS public.service_requests ADD COLUMN IF NOT EXISTS email_sent_date TEXT;
+ALTER TABLE IF EXISTS public.service_requests ADD COLUMN IF NOT EXISTS email_sent_recipient TEXT;
+
 -- AKTIFKAN PUBLIKASI REALTIME SUPABASE UNTUK NOTIFIKASI DAN PERUBAHAN DATA LANGSUNG
 DO $$
 BEGIN
@@ -284,6 +289,8 @@ BEGIN
       public.uniform_items, 
       public.water_locations, 
       public.water_inventory, 
+      public.water_provider_logs,
+      public.water_opname_records,
       public.service_requests, 
       public.stock_transactions, 
       public.app_notifications;

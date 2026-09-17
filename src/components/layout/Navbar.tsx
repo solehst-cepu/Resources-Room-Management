@@ -13,7 +13,8 @@ import {
   ExternalLink,
   Shield,
   Layers,
-  Database
+  Database,
+  RefreshCw
 } from 'lucide-react';
 import { RoleBadge } from '../common/Badge';
 
@@ -37,11 +38,19 @@ export const Navbar: React.FC<NavbarProps> = ({
     markNotificationAsRead, 
     markAllNotificationsAsRead,
     supabaseStatus,
+    fetchFreshData,
     resetAllData 
   } = useApp();
 
   const [showNotifMenu, setShowNotifMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchFreshData(false);
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   const unreadNotifs = notifications.filter(n => !n.isRead);
 
@@ -88,28 +97,38 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Right Actions */}
         <div className="flex items-center gap-2 sm:gap-3">
           
-          {/* Cloud Database Supabase Quick Status Indicator */}
-          <button
-            onClick={() => onNavigate('settings')}
-            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
-              supabaseStatus === 'connected'
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                : supabaseStatus === 'connecting'
-                ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
-                : 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'
-            }`}
-            title="Status Database Supabase - Klik untuk konfigurasi"
-          >
-            <Database className="w-3.5 h-3.5 text-emerald-600" />
-            <span className="hidden lg:inline">Supabase</span>
-            <span className={`w-2 h-2 rounded-full ${
-              supabaseStatus === 'connected'
-                ? 'bg-emerald-500'
-                : supabaseStatus === 'connecting'
-                ? 'bg-amber-500 animate-ping'
-                : 'bg-rose-500'
-            }`} />
-          </button>
+          {/* Cloud Database Supabase Quick Status & Sync Trigger */}
+          <div className="hidden md:flex items-center gap-1">
+            <button
+              onClick={() => onNavigate('settings')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                supabaseStatus === 'connected'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                  : supabaseStatus === 'connecting'
+                  ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                  : 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'
+              }`}
+              title="Status Database Supabase - Klik untuk konfigurasi & sinkronisasi data"
+            >
+              <Database className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="hidden lg:inline">Supabase</span>
+              <span className={`w-2 h-2 rounded-full ${
+                supabaseStatus === 'connected'
+                  ? 'bg-emerald-500'
+                  : supabaseStatus === 'connecting'
+                  ? 'bg-amber-500 animate-ping'
+                  : 'bg-rose-500'
+              }`} />
+            </button>
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing || supabaseStatus !== 'connected'}
+              className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100 transition-colors disabled:opacity-40 cursor-pointer"
+              title="Tarik data terbaru dari cloud (sinkronisasi antar perangkat)"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} />
+            </button>
+          </div>
 
           {/* Active User Role & Unit Badge (Static, no demo switcher dropdown) */}
           <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-100/90 text-xs text-slate-700 border border-slate-200">
