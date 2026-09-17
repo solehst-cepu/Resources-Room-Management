@@ -88,8 +88,31 @@ import {
   transformWaterProviderLogToDB,
   transformWaterProviderLogFromDB,
   transformWaterOpnameRecordToDB,
-  transformWaterOpnameRecordFromDB
+  transformWaterOpnameRecordFromDB,
+  deleteRequestFromSupabase
 } from '../services/supabaseService';
+
+const DELETED_REQUEST_KEY = 'sml_deleted_request_ids';
+
+const getDeletedRequestIds = (): Set<string> => {
+  try {
+    const stored = localStorage.getItem(DELETED_REQUEST_KEY);
+    return stored ? new Set(JSON.parse(stored)) : new Set();
+  } catch {
+    return new Set();
+  }
+};
+
+const markRequestIdDeleted = (id: string) => {
+  try {
+    const set = getDeletedRequestIds();
+    set.add(id);
+    const arr = Array.from(set).slice(-1000);
+    localStorage.setItem(DELETED_REQUEST_KEY, JSON.stringify(arr));
+  } catch (e) {
+    console.warn('Error saving deleted request ID:', e);
+  }
+};
 
 interface ToastInfo {
   id: string;
@@ -397,71 +420,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ]);
 
           if (remoteUsers && remoteUsers.length > 0) {
-            setUsers(prev => {
-              const remoteMap = new Map(remoteUsers.map((u: User) => [u.id, u]));
-              const updated = prev.map(localUser => {
-                const remote = remoteMap.get(localUser.id);
-                if (!remote) {
-                  upsertToTable('users', transformUserToDB(localUser)).catch(console.warn);
-                  return localUser;
-                }
-                remoteMap.delete(localUser.id);
-                return remote;
-              });
-              const remainingRemote = Array.from(remoteMap.values());
-              return [...updated, ...remainingRemote];
-            });
+            setUsers(remoteUsers);
           }
 
           if (remoteItems && remoteItems.length > 0) {
-            setItems(prev => {
-              const remoteMap = new Map(remoteItems.map((i: MasterItem) => [i.id, i]));
-              const updated = prev.map(localItem => {
-                const remote = remoteMap.get(localItem.id);
-                if (!remote) {
-                  upsertToTable('master_items', transformItemToDB(localItem)).catch(console.warn);
-                  return localItem;
-                }
-                remoteMap.delete(localItem.id);
-                return remote;
-              });
-              const remainingRemote = Array.from(remoteMap.values());
-              return [...updated, ...remainingRemote];
-            });
+            setItems(remoteItems);
           }
 
           if (remoteUniforms && remoteUniforms.length > 0) {
-            setUniforms(prev => {
-              const remoteMap = new Map(remoteUniforms.map((u: UniformItem) => [u.id, u]));
-              const updated = prev.map(localUni => {
-                const remote = remoteMap.get(localUni.id);
-                if (!remote) {
-                  upsertToTable('uniform_items', transformUniformToDB(localUni)).catch(console.warn);
-                  return localUni;
-                }
-                remoteMap.delete(localUni.id);
-                return remote;
-              });
-              const remainingRemote = Array.from(remoteMap.values());
-              return [...updated, ...remainingRemote];
-            });
+            setUniforms(remoteUniforms);
           }
 
           if (remoteWaterLocs && remoteWaterLocs.length > 0) {
-            setWaterLocations(prev => {
-              const remoteMap = new Map(remoteWaterLocs.map((w: WaterLocation) => [w.id, w]));
-              const updated = prev.map(localLoc => {
-                const remote = remoteMap.get(localLoc.id);
-                if (!remote) {
-                  upsertToTable('water_locations', transformWaterLocationToDB(localLoc)).catch(console.warn);
-                  return localLoc;
-                }
-                remoteMap.delete(localLoc.id);
-                return remote;
-              });
-              const remainingRemote = Array.from(remoteMap.values());
-              return [...updated, ...remainingRemote];
-            });
+            setWaterLocations(remoteWaterLocs);
           }
 
           if (remoteWaterInv && remoteWaterInv.length > 0) {
@@ -469,121 +440,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
 
           if (remoteWaterLogs && remoteWaterLogs.length > 0) {
-            setWaterProviderLogs(remoteWaterLogs);
+            setWaterProviderLogs(remoteWaterLogs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
           }
 
           if (remoteWaterOpname && remoteWaterOpname.length > 0) {
-            setWaterOpnameRecords(remoteWaterOpname);
+            setWaterOpnameRecords(remoteWaterOpname.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
           }
 
           if (remoteRequests && remoteRequests.length > 0) {
-            setRequests(prev => {
-              const remoteMap = new Map(remoteRequests.map((r: ServiceRequest) => [r.id, r]));
-              // If local request has progressed status (e.g. Selesai, Disetujui) or was completed,
-              // don't let a stale remote Diajukan request overwrite it!
-              const updated = prev.map(localReq => {
-                const remoteReq = remoteMap.get(localReq.id);
-                if (!remoteReq) {
-                  upsertToTable('service_requests', transformRequestToDB(localReq)).catch(console.warn);
-                  return localReq;
-                }
-                remoteMap.delete(localReq.id);
-                if (localReq.status !== 'Diajukan' && remoteReq.status === 'Diajukan') {
-                  upsertToTable('service_requests', transformRequestToDB(localReq)).catch(console.warn);
-                  return localReq;
-                }
-                return remoteReq;
-              });
-              const remainingRemote = Array.from(remoteMap.values());
-              return [...remainingRemote, ...updated].sort(
-                (a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()
-              );
-            });
+            const deletedSet = getDeletedRequestIds();
+            const valid = remoteRequests.filter((r: ServiceRequest) => !deletedSet.has(r.id));
+            setRequests(valid.sort(
+              (a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()
+            ));
           }
 
           if (remoteTrx && remoteTrx.length > 0) {
-            setStockTransactions(prev => {
-              const remoteMap = new Map(remoteTrx.map((t: StockTransaction) => [t.id, t]));
-              const updated = prev.map(localTrx => {
-                const remote = remoteMap.get(localTrx.id);
-                if (!remote) {
-                  upsertToTable('stock_transactions', transformStockTransactionToDB(localTrx)).catch(console.warn);
-                  return localTrx;
-                }
-                remoteMap.delete(localTrx.id);
-                return remote;
-              });
-              const remainingRemote = Array.from(remoteMap.values());
-              return [...remainingRemote, ...updated];
-            });
+            setStockTransactions(remoteTrx.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
           }
 
           if (remoteUnits && remoteUnits.length > 0) {
-            setUnits(prev => {
-              const remoteMap = new Map(remoteUnits.map((u: MasterUnit) => [u.id, u]));
-              const updated = prev.map(localUnit => {
-                const remote = remoteMap.get(localUnit.id);
-                if (!remote) {
-                  upsertToTable('master_units', transformUnitToDB(localUnit)).catch(console.warn);
-                  return localUnit;
-                }
-                remoteMap.delete(localUnit.id);
-                return remote;
-              });
-              const remainingRemote = Array.from(remoteMap.values());
-              return [...updated, ...remainingRemote];
-            });
+            setUnits(remoteUnits);
           }
 
           if (remoteDepts && remoteDepts.length > 0) {
-            setDepartments(prev => {
-              const remoteMap = new Map(remoteDepts.map((d: MasterDepartment) => [d.id, d]));
-              const updated = prev.map(localDept => {
-                const remote = remoteMap.get(localDept.id);
-                if (!remote) {
-                  upsertToTable('master_departments', transformDeptToDB(localDept)).catch(console.warn);
-                  return localDept;
-                }
-                remoteMap.delete(localDept.id);
-                return remote;
-              });
-              const remainingRemote = Array.from(remoteMap.values());
-              return [...updated, ...remainingRemote];
-            });
+            setDepartments(remoteDepts);
           }
 
           if (remoteSuppliers && remoteSuppliers.length > 0) {
-            setSuppliers(prev => {
-              const remoteMap = new Map(remoteSuppliers.map((s: MasterSupplier) => [s.id, s]));
-              const updated = prev.map(localSup => {
-                const remote = remoteMap.get(localSup.id);
-                if (!remote) {
-                  upsertToTable('master_suppliers', transformSupplierToDB(localSup)).catch(console.warn);
-                  return localSup;
-                }
-                remoteMap.delete(localSup.id);
-                return remote;
-              });
-              const remainingRemote = Array.from(remoteMap.values());
-              return [...updated, ...remainingRemote];
-            });
+            setSuppliers(remoteSuppliers);
           }
 
           if (remoteLocations && remoteLocations.length > 0) {
-            setLocations(prev => {
-              const remoteMap = new Map(remoteLocations.map((l: MasterLocation) => [l.id, l]));
-              const updated = prev.map(localLoc => {
-                const remote = remoteMap.get(localLoc.id);
-                if (!remote) {
-                  upsertToTable('master_locations', transformLocationToDB(localLoc)).catch(console.warn);
-                  return localLoc;
-                }
-                remoteMap.delete(localLoc.id);
-                return remote;
-              });
-              const remainingRemote = Array.from(remoteMap.values());
-              return [...updated, ...remainingRemote];
-            });
+            setLocations(remoteLocations);
           }
 
           if (remoteRoles && remoteRoles.length > 0) {
@@ -619,19 +508,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetchAllFromTable<StockTransaction>('stock_transactions', transformStockTransactionFromDB)
       ]);
 
-      if (remoteRequests && remoteRequests.length > 0) {
-        setRequests(prev => {
-          const remoteMap = new Map(remoteRequests.map(r => [r.id, r]));
-          const merged = [...remoteRequests];
-          for (const localReq of prev) {
-            if (!remoteMap.has(localReq.id)) {
-              merged.push(localReq);
-            }
-          }
-          return merged.sort(
-            (a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()
-          );
-        });
+      if (remoteRequests) {
+        const deletedSet = getDeletedRequestIds();
+        const validRequests = remoteRequests.filter(r => !deletedSet.has(r.id));
+        setRequests(validRequests.sort(
+          (a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()
+        ));
       }
 
       if (remoteWaterInv && remoteWaterInv.length > 0) {
@@ -679,12 +561,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     window.addEventListener('focus', handleVisibilityOrFocus);
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
 
-    // Periodic silent sync every 25 seconds if tab is active
+    // Periodic silent sync every 10 seconds if tab is active
     const syncInterval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         fetchFreshData(true);
       }
-    }, 25000);
+    }, 10000);
 
     return () => {
       window.removeEventListener('focus', handleVisibilityOrFocus);
@@ -706,6 +588,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (payload) => {
             if (payload.eventType === 'INSERT' && payload.new) {
               const newReq = transformRequestFromDB(payload.new);
+              const deletedSet = getDeletedRequestIds();
+              if (deletedSet.has(newReq.id)) return;
               setRequests(prev => {
                 if (prev.some(r => r.id === newReq.id)) return prev;
                 return [newReq, ...prev].sort(
@@ -715,9 +599,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             } else if (payload.eventType === 'UPDATE' && payload.new) {
               const updatedReq = transformRequestFromDB(payload.new);
               setRequests(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
-            } else if (payload.eventType === 'DELETE' && payload.old) {
-              const oldId = payload.old.id;
-              setRequests(prev => prev.filter(r => r.id !== oldId));
+            } else if (payload.eventType === 'DELETE') {
+              const oldId = payload.old?.id || (payload.old as any)?.ID;
+              if (oldId) {
+                markRequestIdDeleted(oldId);
+                setRequests(prev => prev.filter(r => r.id !== oldId));
+              } else {
+                // Fetch fresh data if specific ID was omitted by Postgres
+                fetchFreshData(true);
+              }
             }
           }
         )
@@ -1618,10 +1508,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const req = requests.find(r => r.id === requestId);
     if (!req) return;
     
+    // Mark as deleted in local storage so background sync never resurrects it
+    markRequestIdDeleted(requestId);
+
+    // Remove immediately from active UI state
     setRequests(prev => prev.filter(r => r.id !== requestId));
     
-    // Sync deletion to Supabase cloud ('service_requests')
-    deleteFromTable('service_requests', 'id', requestId).catch(err => {
+    // Sync deletion to Supabase cloud ('service_requests') by id and fallback request_number
+    deleteRequestFromSupabase(requestId, req.requestNumber).catch(err => {
       console.warn('Cloud delete request sync error:', err);
     });
 

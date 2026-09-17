@@ -276,6 +276,10 @@ ALTER TABLE IF EXISTS public.service_requests ADD COLUMN IF NOT EXISTS email_sen
 ALTER TABLE IF EXISTS public.service_requests ADD COLUMN IF NOT EXISTS email_sent_date TEXT;
 ALTER TABLE IF EXISTS public.service_requests ADD COLUMN IF NOT EXISTS email_sent_recipient TEXT;
 
+-- Pastikan event DELETE menyertakan data lengkap saat dipublikasikan melalui Realtime Supabase
+ALTER TABLE IF EXISTS public.service_requests REPLICA IDENTITY FULL;
+ALTER TABLE IF EXISTS public.stock_transactions REPLICA IDENTITY FULL;
+
 -- AKTIFKAN PUBLIKASI REALTIME SUPABASE UNTUK NOTIFIKASI DAN PERUBAHAN DATA LANGSUNG
 DO $$
 BEGIN

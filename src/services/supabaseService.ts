@@ -684,14 +684,53 @@ export async function deleteFromTable(
   idValue: string
 ): Promise<boolean> {
   try {
-    const { error } = await supabase.from(tableName).delete().eq(idColumn, idValue);
+    const { error, count } = await supabase.from(tableName).delete({ count: 'exact' }).eq(idColumn, idValue);
     if (error) {
       console.warn(`Supabase delete error on table [${tableName}]:`, error.message);
       return false;
     }
+    console.log(`[Supabase] Deleted from [${tableName}] where ${idColumn} = '${idValue}' (count: ${count})`);
     return true;
   } catch (e) {
     console.warn(`Supabase delete exception on [${tableName}]:`, e);
+    return false;
+  }
+}
+
+export async function deleteRequestFromSupabase(
+  requestId: string,
+  requestNumber?: string
+): Promise<boolean> {
+  try {
+    const { error, count } = await supabase
+      .from('service_requests')
+      .delete({ count: 'exact' })
+      .eq('id', requestId);
+
+    if (!error && (count ?? 0) > 0) {
+      console.log(`[Supabase] Successfully deleted request ${requestId} (rows affected: ${count})`);
+      return true;
+    }
+
+    if (requestNumber) {
+      const retry = await supabase
+        .from('service_requests')
+        .delete({ count: 'exact' })
+        .eq('request_number', requestNumber);
+
+      if (!retry.error && (retry.count ?? 0) > 0) {
+        console.log(`[Supabase] Successfully deleted request by request_number ${requestNumber} (rows: ${retry.count})`);
+        return true;
+      }
+    }
+
+    if (error) {
+      console.warn(`[Supabase] Delete request error:`, error.message);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn('[Supabase] Exception deleting service request:', e);
     return false;
   }
 }
