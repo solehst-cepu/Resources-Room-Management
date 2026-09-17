@@ -26,7 +26,8 @@ import {
 import { 
   generateOrderCompletionEmail, 
   saveEmailNotificationLog,
-  resolveUnitHeadInfo 
+  resolveUnitHeadInfo,
+  getGmailComposeUrl
 } from '../services/emailService';
 import { 
   INITIAL_USERS, 
@@ -114,11 +115,17 @@ const markRequestIdDeleted = (id: string) => {
   }
 };
 
-interface ToastInfo {
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
+export interface ToastInfo {
   id: string;
   type: 'success' | 'error' | 'info' | 'warning';
   title: string;
   message?: string;
+  action?: ToastAction;
 }
 
 export type SupabaseConnectionStatus = 'connected' | 'connecting' | 'error' | 'local_fallback';
@@ -256,7 +263,7 @@ interface AppContextType {
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
   addAuditLog: (action: string, module: string, details: string) => void;
-  showToast: (type: ToastInfo['type'], title: string, message?: string) => void;
+  showToast: (type: ToastInfo['type'], title: string, message?: string, action?: ToastAction) => void;
   removeToast: (id: string) => void;
   
   // Reset demo data
@@ -665,6 +672,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
           }
         )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'master_units' },
+          (payload) => {
+            if (payload.eventType === 'INSERT' && payload.new) {
+              const newUnit = transformUnitFromDB(payload.new);
+              setUnits(prev => prev.some(u => u.id === newUnit.id) ? prev.map(u => u.id === newUnit.id ? newUnit : u) : [...prev, newUnit]);
+            } else if (payload.eventType === 'UPDATE' && payload.new) {
+              const updatedUnit = transformUnitFromDB(payload.new);
+              setUnits(prev => prev.map(u => u.id === updatedUnit.id ? updatedUnit : u));
+            } else if (payload.eventType === 'DELETE' && payload.old) {
+              setUnits(prev => prev.filter(u => u.id !== payload.old.id));
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'users' },
+          (payload) => {
+            if (payload.eventType === 'INSERT' && payload.new) {
+              const newUser = transformUserFromDB(payload.new);
+              setUsers(prev => prev.some(u => u.id === newUser.id) ? prev.map(u => u.id === newUser.id ? newUser : u) : [...prev, newUser]);
+            } else if (payload.eventType === 'UPDATE' && payload.new) {
+              const updatedUser = transformUserFromDB(payload.new);
+              setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+            } else if (payload.eventType === 'DELETE' && payload.old) {
+              setUsers(prev => prev.filter(u => u.id !== payload.old.id));
+            }
+          }
+        )
         .subscribe();
 
       return () => {
@@ -788,12 +825,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [locations]);
 
   // Toast functions
-  const showToast = (type: ToastInfo['type'], title: string, message?: string) => {
+  const showToast = (type: ToastInfo['type'], title: string, message?: string, action?: ToastAction) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    setToasts(prev => [...prev, { id, type, title, message }]);
+    setToasts(prev => [...prev, { id, type, title, message, action }]);
     setTimeout(() => {
       removeToast(id);
-    }, 4500);
+    }, action ? 6500 : 4500);
   };
 
   const removeToast = (id: string) => {
@@ -1374,7 +1411,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Generate email report and record log
       const emailReport = generateOrderCompletionEmail(
         updatedReq, 
-        unitObj, 
+        units, 
         currentUser?.name,
         users,
         { email: headEmail, name: headName }
@@ -1399,7 +1436,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       newNotifs.unshift({
         id: `notif-email-${Date.now() + 1}`,
         title: `[Laporan Email Selesai] ${req.requestNumber} (${req.unit})`,
-        message: `Laporan resmi penyelesaian order telah diterbitkan & dikirimkan ke Kepala Unit ${headName} (${headEmail}). Arsip serah terima tersimpan.`,
+        message: `Laporan resmi penyelesaian order telah diterbitkan & dialamatkan ke Kepala Unit ${headName} (${headEmail}). Arsip serah terima tersimpan.`,
         type: 'success',
         serviceType: req.serviceType,
         requestId: req.id,
@@ -1410,7 +1447,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addAuditLog(
         'Kirim Laporan Email Kepala Unit',
         req.serviceType.toUpperCase(),
-        `Laporan penyelesaian order ${req.requestNumber} (${req.userName}) dikirimkan ke Kepala Unit ${headName} (${headEmail})`
+        `Laporan penyelesaian order ${req.requestNumber} (${req.userName}) dialamatkan ke Kepala Unit ${headName} (${headEmail})`
       );
     }
 
@@ -1426,7 +1463,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const headInfo = resolveUnitHeadInfo(req.unit, units, users);
       const headName = headInfo.headName;
       const headEmail = (extraData?.recipientEmail || headInfo.primaryEmail).trim();
-      showToast('success', 'Order Selesai & Laporan Email Terkirim', `${req.requestNumber} telah selesai. Laporan telah dikirimkan ke Kepala Unit ${headName} (${headEmail})`);
+      const emailReport = generateOrderCompletionEmail(
+        updatedReq, 
+        units, 
+        currentUser?.name,
+        users,
+        { email: headEmail, name: headName }
+      );
+
+      showToast(
+        'success', 
+        'Order Selesai & Laporan Email Otomatis Disiapkan', 
+        `${req.requestNumber} selesai. Laporan resmi ditujukan ke Kepala Unit ${headName} (${headEmail}).`,
+        {
+          label: 'Buka di Gmail Web',
+          onClick: () => {
+            const url = getGmailComposeUrl(emailReport);
+            window.open(url, '_blank', 'noopener,noreferrer');
+          }
+        }
+      );
     } else {
       showToast('info', 'Status Diperbarui', `${req.requestNumber} sekarang berstatus ${status}`);
     }
@@ -1446,7 +1502,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const emailReport = generateOrderCompletionEmail(
       req, 
-      unitObj, 
+      units, 
       currentUser?.name,
       users,
       { email: targetEmail, name: headName }

@@ -269,15 +269,15 @@ export const EmailNotificationLogsTab: React.FC = () => {
                         </span>
                       </td>
                       <td className="p-2.5 text-center">
-                        {isUserAccount ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200" title="Terhubung ke akun manager aktif">
-                            <Check className="w-3 h-3 text-teal-600" />
-                            Akun Terdaftar
+                        {u.email ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200" title="Email resmi Kepala Unit di Master Database">
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            Database Unit
                           </span>
-                        ) : u.email ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                            <Check className="w-3 h-3" />
-                            Master Unit
+                        ) : isUserAccount ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200" title="Terhubung ke akun pimpinan terdaftar">
+                            <Check className="w-3 h-3 text-teal-600" />
+                            Akun Pimpinan
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200" title="Menggunakan domain @lazuardi.sch.id">

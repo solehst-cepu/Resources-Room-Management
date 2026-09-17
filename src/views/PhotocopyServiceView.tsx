@@ -30,6 +30,7 @@ import { StatusBadge, UrgencyBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { UserSearchSelect } from '../components/common/UserSearchSelect';
 import { TrackOrderModal } from '../components/common/TrackOrderModal';
+import { EmailReportModal } from '../components/common/EmailReportModal';
 
 interface PhotocopyServiceViewProps {
   onOpenReceipt: (req: ServiceRequest) => void;
@@ -51,6 +52,10 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
   const [trackingRequest, setTrackingRequest] = useState<ServiceRequest | null>(null);
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
   const [isOrderPickerOpen, setIsOrderPickerOpen] = useState(false);
+
+  // Email Report Modal State
+  const [emailModalRequest, setEmailModalRequest] = useState<ServiceRequest | null>(null);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
   const canManageOrDelete = currentUser?.role === 'super_admin' || currentUser?.role === 'admin_rr';
 
@@ -1065,6 +1070,13 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
                     const recipient = actionPickedUpBy.trim() || selectedRequest.userName || 'Pemohon';
                     updateRequestStatus(selectedRequest.id, 'Selesai', { pickedUpBy: recipient });
                     setIsActionModalOpen(false);
+                    setEmailModalRequest({
+                      ...selectedRequest,
+                      status: 'Selesai',
+                      pickedUpBy: recipient,
+                      completedDate: new Date().toISOString()
+                    });
+                    setIsEmailModalOpen(true);
                   }}
                   className={`p-2.5 rounded-lg border text-left text-xs font-semibold cursor-pointer transition-colors ${
                     selectedRequest.status === 'Selesai' ? 'bg-emerald-700 text-white border-emerald-700' : 'border-slate-200 hover:border-emerald-600 hover:bg-emerald-50 text-slate-700'
@@ -1072,9 +1084,9 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
                 >
                   <div className="flex items-center gap-1.5 font-bold mb-0.5">
                     <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>4. Selesai</span>
+                    <span>4. Selesai & Kirim Laporan</span>
                   </div>
-                  <span className="text-[10px] opacity-80 block">Diserahkan ke pemohon</span>
+                  <span className="text-[10px] opacity-80 block">Diserahkan & siapkan email</span>
                 </button>
               </div>
 
@@ -1307,6 +1319,18 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
             )}
           </div>
         </Modal>
+      )}
+
+      {/* Email Report Modal */}
+      {emailModalRequest && (
+        <EmailReportModal
+          isOpen={isEmailModalOpen}
+          onClose={() => {
+            setIsEmailModalOpen(false);
+            setEmailModalRequest(null);
+          }}
+          request={emailModalRequest}
+        />
       )}
 
     </div>

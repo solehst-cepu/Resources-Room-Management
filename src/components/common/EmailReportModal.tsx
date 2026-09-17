@@ -62,22 +62,22 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
   // Sync state whenever request or resolution changes
   useEffect(() => {
     if (resolution && request) {
-      // Use existing sent recipient or primary registered email
-      const initialEmail = request.emailSentRecipient || resolution.primaryEmail;
+      // Prioritize the official database email from resolution
+      const initialEmail = resolution.primaryEmail || request.emailSentRecipient || '';
       setRecipientEmail(initialEmail);
       setRecipientName(resolution.headName);
       setCcEmail([request.userEmail, 'resources.room@lazuardi.sch.id'].filter(Boolean).join(', '));
       setIsEditingRecipient(false);
       setSentSuccess(false);
     }
-  }, [request?.id, request?.emailSentRecipient, resolution]);
+  }, [request?.id, resolution]);
 
   if (!request || !resolution) return null;
 
   // Generate real-time email report based on current selected/edited recipient
   const emailData: EmailReportData = generateOrderCompletionEmail(
     request,
-    resolution.matchedUnit || unitObj,
+    units,
     effectiveOperator,
     users,
     {

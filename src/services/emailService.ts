@@ -27,26 +27,68 @@ export const resolveUnitHeadInfo = (
   units: MasterUnit[] = [],
   users: User[] = []
 ): UnitHeadResolution => {
-  const norm = (unitIdentifier || '').trim().toLowerCase();
+  const raw = (unitIdentifier || '').trim();
+  const norm = raw.toLowerCase();
 
-  // 1. Find matching MasterUnit
-  const matchedUnit = units.find(u => {
-    const code = u.code.toLowerCase().trim();
-    const name = u.name.toLowerCase().trim();
-    if (code === norm || name === norm) return true;
-    if (norm === 'general affairs' && (code === 'ga' || name.includes('general affairs'))) return true;
-    if (norm === 'ga' && (code === 'ga' || name.includes('general affairs'))) return true;
-    if (norm === 'management' && (code === 'mgt' || name.includes('management') || name.includes('yayasan'))) return true;
-    if (norm === 'resources' && (code === 'rr' || name.includes('resources'))) return true;
-    if (code && code.length >= 2 && norm.includes(code)) return true;
-    if (name && (norm.includes(name) || name.includes(norm))) return true;
-    return false;
-  });
+  // 1. Find matching MasterUnit with multi-level accurate resolution
+  // Step 1a: Exact match by Unit ID
+  let matchedUnit = units.find(u => u.id.toLowerCase().trim() === norm);
 
-  const unitCode = matchedUnit?.code || unitIdentifier.toUpperCase().trim();
-  const unitName = matchedUnit?.name || `Unit ${unitIdentifier}`;
+  // Step 1b: Exact match by Unit Code (e.g. 'SMP', 'SD', 'TK', 'GA', 'FIN', 'HR', 'IT', 'SEC', 'RR', 'MGT')
+  if (!matchedUnit) {
+    matchedUnit = units.find(u => u.code.toLowerCase().trim() === norm);
+  }
 
-  // 2. Find matching Manager / Pimpinan User in registered users list
+  // Step 1c: Exact match by Unit Name (e.g. 'SMP Lazuardi', 'General Affairs')
+  if (!matchedUnit) {
+    matchedUnit = units.find(u => u.name.toLowerCase().trim() === norm);
+  }
+
+  // Step 1d: Standard school unit aliases
+  if (!matchedUnit) {
+    const aliasMap: Record<string, string[]> = {
+      'GA': ['general affairs', 'sarpras', 'fasilitas & maintenance', 'fasilitas', 'maintenance', 'sarana prasarana', 'ga'],
+      'MGT': ['management', 'yayasan', 'manajemen', 'direksi', 'yayasan lazuardi', 'management / yayasan', 'mgt'],
+      'RR': ['resources room', 'resources', 'rr', 'loket rr'],
+      'FIN': ['finance', 'accounting', 'keuangan', 'kasir', 'finance & accounting', 'fin'],
+      'HR': ['human resources', 'kepegawaian', 'sdm', 'hr'],
+      'IT': ['information technology', 'teknologi', 'edutech', 'it', 'komputer', 'lab komputer'],
+      'SEC': ['security', 'satpam', 'keamanan', 'safety', 'security & safety', 'sec'],
+      'TK': ['tk', 'kindergarten', 'paud', 'toddler', 'pg', 'tk lazuardi'],
+      'SD': ['sd', 'primary', 'elementary', 'sd lazuardi'],
+      'SMP': ['smp', 'junior', 'jhs', 'smp lazuardi'],
+      'SMA': ['sma', 'senior', 'shs', 'smk', 'sma lazuardi']
+    };
+
+    matchedUnit = units.find(u => {
+      const codeKey = u.code.toUpperCase().trim();
+      const aliases = aliasMap[codeKey] || [];
+      return aliases.some(alias => norm === alias || norm.startsWith(alias + ' ') || norm.endsWith(' ' + alias));
+    });
+  }
+
+  // Step 1e: Word boundary match on Code (e.g. "SMP Lazuardi" or "Unit SMP" matches code "SMP", but NOT substring like "security" matching "it")
+  if (!matchedUnit) {
+    matchedUnit = units.find(u => {
+      const c = u.code.toLowerCase().trim();
+      if (!c) return false;
+      const regex = new RegExp(`(^|[^a-z0-9])${c}([^a-z0-9]|$)`, 'i');
+      return regex.test(norm);
+    });
+  }
+
+  // Step 1f: Containment in unit name (only if length >= 3 to prevent false positives)
+  if (!matchedUnit) {
+    matchedUnit = units.find(u => {
+      const name = u.name.toLowerCase().trim();
+      return (name.length >= 4 && norm.includes(name)) || (norm.length >= 4 && name.includes(norm));
+    });
+  }
+
+  const unitCode = matchedUnit?.code || (raw ? raw.toUpperCase() : 'UNIT');
+  const unitName = matchedUnit?.name || (raw ? `Unit ${raw}` : 'Unit Sekolah');
+
+  // 2. Find matching Manager / Pimpinan User in registered users list (for fallback or alternate accounts)
   const matchingManagers = users.filter(u => {
     const uUnit = (u.unit || '').toLowerCase().trim();
     const uDept = (u.department || '').toLowerCase().trim();
@@ -56,9 +98,7 @@ export const resolveUnitHeadInfo = (
         uUnit === matchedUnit.code.toLowerCase().trim() || 
         uUnit === matchedUnit.name.toLowerCase().trim() ||
         (matchedUnit.code.toLowerCase() === 'ga' && uUnit.includes('general'))
-      )) ||
-      norm.includes(uUnit) ||
-      uUnit.includes(norm);
+      ));
 
     const isHeadByName = Boolean(matchedUnit?.headName && u.name.toLowerCase().trim() === matchedUnit.headName.toLowerCase().trim());
     const isManagerRole = u.role === 'manager';
@@ -67,37 +107,48 @@ export const resolveUnitHeadInfo = (
     return isHeadByName || (isUnitMatch && (isManagerRole || isHeadInDept));
   });
 
-  // Pick best matched manager user
   const matchedManagerUser = matchingManagers.find(u => u.role === 'manager') || matchingManagers[0];
 
   // 3. Collect registered email options with deduplication
+  // CRITICAL: Master Unit in the database is the absolute #1 authoritative source of truth for the Unit Head!
   const options: RegisteredEmailOption[] = [];
   const seenEmails = new Set<string>();
 
   const addOption = (opt: RegisteredEmailOption) => {
-    const cleanEmail = opt.email.toLowerCase().trim();
+    const cleanEmail = (opt.email || '').toLowerCase().trim();
     if (cleanEmail && cleanEmail.includes('@') && !seenEmails.has(cleanEmail)) {
       seenEmails.add(cleanEmail);
       options.push({ ...opt, email: cleanEmail });
     }
   };
 
-  // Option A: Registered Manager User Account (e.g. Dra. Hj. Nurul Hidayah -> nurul.manager@lazuardi.sch.id)
-  if (matchedManagerUser && matchedManagerUser.email) {
+  // PRIORITY 1: Email Resmi dari Tabel Master Unit di Database (master_units.email)
+  if (matchedUnit?.email && matchedUnit.email.trim()) {
     addOption({
-      email: matchedManagerUser.email,
-      name: matchedManagerUser.name,
-      roleOrTitle: matchedManagerUser.department || `Pimpinan/Kepala Unit ${unitName}`,
-      source: 'manager_user',
+      email: matchedUnit.email.trim(),
+      name: matchedUnit.headName?.trim() || `Kepala Unit ${unitName}`,
+      roleOrTitle: `Email Resmi Kepala Unit di Database (${matchedUnit.code} - ${matchedUnit.name})`,
+      source: 'unit_head',
       isRecommended: true
     });
   }
 
-  // Also include any other managers registered for this unit
+  // PRIORITY 2: Akun Pengguna Kepala / Manager Terdaftar di Sistem
+  if (matchedManagerUser && matchedManagerUser.email && matchedManagerUser.email.trim()) {
+    addOption({
+      email: matchedManagerUser.email.trim(),
+      name: matchedManagerUser.name,
+      roleOrTitle: matchedManagerUser.department || `Pimpinan/Kepala Unit ${unitName}`,
+      source: 'manager_user',
+      isRecommended: options.length === 0
+    });
+  }
+
+  // PRIORITY 3: Manajer lain yang terafiliasi dengan unit ini
   matchingManagers.forEach(mgr => {
-    if (mgr.id !== matchedManagerUser?.id && mgr.email) {
+    if (mgr.id !== matchedManagerUser?.id && mgr.email && mgr.email.trim()) {
       addOption({
-        email: mgr.email,
+        email: mgr.email.trim(),
         name: mgr.name,
         roleOrTitle: mgr.department || `Pimpinan ${unitName}`,
         source: 'manager_user'
@@ -105,23 +156,12 @@ export const resolveUnitHeadInfo = (
     }
   });
 
-  // Option B: Registered Email from Master Unit Table
-  if (matchedUnit?.email) {
-    addOption({
-      email: matchedUnit.email,
-      name: matchedUnit.headName || `Kepala Unit ${unitName}`,
-      roleOrTitle: `Email Resmi Unit Terdaftar (${matchedUnit.code} - ${matchedUnit.name})`,
-      source: 'unit_head',
-      isRecommended: options.length === 0
-    });
-  }
-
-  // Option C: Any user account whose name matches matchedUnit.headName
+  // PRIORITY 4: Pengguna yang namanya cocok dengan nama Kepala Unit di database
   if (matchedUnit?.headName) {
     const userWithSameName = users.find(u => u.name.toLowerCase().trim() === matchedUnit.headName?.toLowerCase().trim());
-    if (userWithSameName && userWithSameName.email) {
+    if (userWithSameName && userWithSameName.email && userWithSameName.email.trim()) {
       addOption({
-        email: userWithSameName.email,
+        email: userWithSameName.email.trim(),
         name: userWithSameName.name,
         roleOrTitle: userWithSameName.department || `Pimpinan ${unitName}`,
         source: 'manager_user'
@@ -129,7 +169,7 @@ export const resolveUnitHeadInfo = (
     }
   }
 
-  // Option D: Clean school domain fallback (no spaces or invalid chars)
+  // PRIORITY 5: Domain Sekolah Resmi Fallback
   const safeCode = unitCode.toLowerCase().replace(/[^a-z0-9]/g, '');
   const fallbackEmail = `${safeCode || 'unit'}@lazuardi.sch.id`;
 
@@ -137,14 +177,21 @@ export const resolveUnitHeadInfo = (
     options.push({
       email: fallbackEmail,
       name: matchedUnit?.headName || 'Kepala Unit',
-      roleOrTitle: `Email Default Sistem (${unitCode})`,
+      roleOrTitle: `Email Default Sekolah (${unitCode})`,
       source: 'unit_official',
       isRecommended: true
     });
   }
 
-  const primaryEmail = options[0].email;
-  const headName = matchedManagerUser?.name || matchedUnit?.headName || 'Kepala Unit';
+  // Primary Email is ALWAYS the database master unit email if set, otherwise first valid option
+  const primaryEmail = (matchedUnit?.email && matchedUnit.email.trim())
+    ? matchedUnit.email.trim()
+    : options[0].email;
+
+  // Head Name is ALWAYS the database master unit head_name if set
+  const headName = (matchedUnit?.headName && matchedUnit.headName.trim())
+    ? matchedUnit.headName.trim()
+    : (matchedManagerUser?.name || 'Kepala Unit');
 
   return {
     unitCode,
@@ -176,13 +223,18 @@ export const formatServiceTypeLabel = (type: ServiceType): string => {
 
 export const generateOrderCompletionEmail = (
   request: ServiceRequest,
-  unitObj?: MasterUnit,
+  unitsOrUnit?: MasterUnit[] | MasterUnit,
   operatorName?: string,
   users: User[] = [],
   customRecipient?: { email?: string; name?: string; cc?: string }
 ): EmailReportData => {
+  const unitsList: MasterUnit[] = Array.isArray(unitsOrUnit)
+    ? unitsOrUnit
+    : (unitsOrUnit ? [unitsOrUnit] : []);
+
   // Resolve accurate registered head info
-  const resolution = resolveUnitHeadInfo(request.unit, unitObj ? [unitObj] : [], users);
+  const resolution = resolveUnitHeadInfo(request.unit, unitsList, users);
+  const unitObj = resolution.matchedUnit || (Array.isArray(unitsOrUnit) ? undefined : unitsOrUnit);
 
   const unitName = unitObj?.name || resolution.unitName;
   const headName = customRecipient?.name || resolution.headName || unitObj?.headName || 'Kepala Unit';
