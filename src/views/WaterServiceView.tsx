@@ -34,6 +34,7 @@ import {
 import { StatusBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { UserSearchSelect } from '../components/common/UserSearchSelect';
+import { resolveUnitHeadInfo } from '../services/emailService';
 
 interface WaterServiceViewProps {
   onOpenReceipt: (req: ServiceRequest) => void;
@@ -44,6 +45,7 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
     currentUser, 
     users,
     units,
+    departments,
     waterLocations, 
     waterInventory, 
     waterProviderLogs,
@@ -91,33 +93,51 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
     return () => clearInterval(timer);
   }, []);
 
+  // Helper to find best matching water location for a unit
+  const getMatchingLocationForUnit = (unitName: string) => {
+    const norm = (unitName || '').toLowerCase().trim();
+    if (!norm) return waterLocations[0];
+    return waterLocations.find(l => {
+      const lNorm = (l.unit || '').toLowerCase().trim();
+      if (lNorm === norm) return true;
+      if (lNorm.includes(norm) || norm.includes(lNorm)) return true;
+      if ((lNorm === 'ga' || lNorm.includes('general')) && (norm === 'ga' || norm.includes('general') || norm.includes('sarpras'))) return true;
+      if ((lNorm === 'mgt' || lNorm.includes('management')) && (norm === 'mgt' || norm.includes('management') || norm.includes('yayasan'))) return true;
+      return false;
+    }) || waterLocations[0];
+  };
+
   // Request Form State
+  const initialUser = currentUser || users[0];
+  const initialLoc = initialUser ? getMatchingLocationForUnit(initialUser.unit) : waterLocations[0];
+
   const [requestForm, setRequestForm] = useState({
-    userId: currentUser?.id || users[0]?.id || '',
-    unit: currentUser?.unit || 'SMP',
-    locationId: waterLocations[0]?.id || '',
+    userId: initialUser?.id || '',
+    unit: initialUser?.unit || 'SMP',
+    department: initialUser?.department || '',
+    locationId: initialLoc?.id || '',
     customRoomName: '',
-    pickedUpBy: currentUser?.name || '',
+    pickedUpBy: initialUser?.name || '',
     requestType: 'Penggantian Galon Kosong' as 'Penggantian Galon Kosong' | 'Tambahan Galon' | 'Galon Baru',
     gallonCount: 1,
     emptyGallonsReturned: 1,
     notes: ''
   });
 
-  // Keep requestForm user & unit synced
+  // Keep requestForm user, unit & department synced with selected user
   const handleUserChange = (selectedUserId: string) => {
     const selectedUser = users.find(u => u.id === selectedUserId);
     if (selectedUser) {
-      setRequestForm(prev => {
-        const userLoc = waterLocations.find(l => l.unit === selectedUser.unit);
-        return {
-          ...prev,
-          userId: selectedUser.id,
-          unit: selectedUser.unit,
-          pickedUpBy: prev.pickedUpBy || selectedUser.name,
-          locationId: userLoc ? userLoc.id : prev.locationId
-        };
-      });
+      const userUnit = selectedUser.unit || 'SMP';
+      const matchedLoc = getMatchingLocationForUnit(userUnit);
+      setRequestForm(prev => ({
+        ...prev,
+        userId: selectedUser.id,
+        unit: userUnit,
+        department: selectedUser.department || '',
+        pickedUpBy: selectedUser.name || prev.pickedUpBy,
+        locationId: matchedLoc ? matchedLoc.id : (prev.locationId || waterLocations[0]?.id || 'custom')
+      }));
     }
   };
 
@@ -184,19 +204,31 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
     return matchUnit && matchStatus && matchSearch;
   });
 
-  // Find recipient head of unit for current form
-  const currentUnitObj = units.find(
-    u => u.code.toLowerCase() === requestForm.unit.toLowerCase() || 
-         u.name.toLowerCase().includes(requestForm.unit.toLowerCase())
-  );
-  const currentHeadName = currentUnitObj?.headName || `Kepala Unit ${requestForm.unit}`;
-  const currentHeadEmail = currentUnitObj?.email || `${requestForm.unit.toLowerCase()}@lazuardi.sch.id`;
+  // Find recipient head of unit for current form using database resolution
+  const unitHeadInfo = resolveUnitHeadInfo(requestForm.unit, units, users);
+  const currentHeadName = unitHeadInfo.headName;
+  const currentHeadEmail = unitHeadInfo.primaryEmail;
+
+  // Filter and split locations into unit-matched vs other campus locations
+  const currentUnitNorm = (requestForm.unit || '').toLowerCase().trim();
+  const matchingLocations = waterLocations.filter(l => {
+    if (!currentUnitNorm) return true;
+    const lNorm = (l.unit || '').toLowerCase().trim();
+    if (lNorm === currentUnitNorm) return true;
+    if (lNorm.includes(currentUnitNorm) || currentUnitNorm.includes(lNorm)) return true;
+    if ((lNorm === 'ga' || lNorm.includes('general')) && (currentUnitNorm === 'ga' || currentUnitNorm.includes('general') || currentUnitNorm.includes('sarpras'))) return true;
+    if ((lNorm === 'mgt' || lNorm.includes('management')) && (currentUnitNorm === 'mgt' || currentUnitNorm.includes('management') || currentUnitNorm.includes('yayasan'))) return true;
+    return false;
+  });
+  const otherLocations = waterLocations.filter(l => !matchingLocations.some(m => m.id === l.id));
 
   // Submit Request Handler
   const handleRequestSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const loc = waterLocations.find(l => l.id === requestForm.locationId);
-    const room = requestForm.customRoomName ? requestForm.customRoomName : (loc ? loc.roomName : `Ruangan Unit ${requestForm.unit}`);
+    const room = (requestForm.locationId === 'custom' || requestForm.customRoomName)
+      ? (requestForm.customRoomName || `Ruangan Unit ${requestForm.unit}`)
+      : (loc ? loc.roomName : `Ruangan Unit ${requestForm.unit}`);
     const selectedUser = users.find(u => u.id === requestForm.userId) || currentUser;
 
     createRequest({
@@ -205,7 +237,7 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
       userName: selectedUser?.name || currentUser?.name || 'Staff Lazuardi',
       userEmail: selectedUser?.email || currentUser?.email || 'staff@lazuardi.sch.id',
       unit: requestForm.unit,
-      department: selectedUser?.department || 'Akademik & Operasional',
+      department: requestForm.department || selectedUser?.department || 'Akademik & Operasional',
       urgency: 'Biasa',
       purpose: `${requestForm.requestType}: ${room}`,
       notes: requestForm.notes,
@@ -350,9 +382,22 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => {
-              // Set initial requester
-              if (currentUser) {
-                handleUserChange(currentUser.id);
+              const targetUser = currentUser || users[0];
+              if (targetUser) {
+                const userUnit = targetUser.unit || 'SMP';
+                const matchedLoc = getMatchingLocationForUnit(userUnit);
+                setRequestForm({
+                  userId: targetUser.id,
+                  unit: userUnit,
+                  department: targetUser.department || '',
+                  locationId: matchedLoc ? matchedLoc.id : (waterLocations[0]?.id || 'custom'),
+                  customRoomName: '',
+                  pickedUpBy: targetUser.name || '',
+                  requestType: 'Penggantian Galon Kosong',
+                  gallonCount: 1,
+                  emptyGallonsReturned: 1,
+                  notes: ''
+                });
               }
               setIsRequestModalOpen(true);
             }}
@@ -569,12 +614,20 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                   <div className="mt-3 pt-3 border-t border-slate-100">
                     <button
                       onClick={() => {
-                        const userInUnit = users.find(u => u.unit === loc.unit) || currentUser;
+                        const userInUnit = users.find(u => {
+                          const uNorm = (u.unit || '').toLowerCase().trim();
+                          const locNorm = loc.unit.toLowerCase().trim();
+                          return uNorm === locNorm || uNorm.includes(locNorm) || locNorm.includes(uNorm);
+                        }) || currentUser;
+
                         setRequestForm(prev => ({ 
                           ...prev, 
                           locationId: loc.id,
+                          customRoomName: '',
                           unit: loc.unit,
+                          department: userInUnit?.department || loc.department || prev.department,
                           userId: userInUnit?.id || prev.userId,
+                          pickedUpBy: userInUnit?.name || prev.pickedUpBy,
                           gallonCount: 1,
                           emptyGallonsReturned: 1
                         }));
@@ -645,8 +698,8 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                 <tr>
                   <th className="p-3">No. Tiket</th>
                   <th className="p-3">Waktu Pengajuan</th>
-                  <th className="p-3">Pemohon &amp; Unit</th>
-                  <th className="p-3">Ruangan / Lokasi</th>
+                  <th className="p-3">Pemohon, Unit &amp; Departemen</th>
+                  <th className="p-3">Ruangan / Titik Galon</th>
                   <th className="p-3">Jenis Permintaan</th>
                   <th className="p-3 text-center">Galon Isi</th>
                   <th className="p-3 text-center">Kosong Kembali</th>
@@ -672,12 +725,24 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                       </td>
                       <td className="p-3">
                         <strong className="text-slate-900 block">{req.userName}</strong>
-                        <span className="text-[10px] font-semibold text-cyan-800 bg-cyan-50 px-1.5 py-0.5 rounded border border-cyan-200">
-                          {req.unit}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                          <span className="text-[10px] font-bold text-cyan-800 bg-cyan-50 px-1.5 py-0.5 rounded border border-cyan-200">
+                            Unit {req.unit}
+                          </span>
+                          {req.department && (
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              &bull; {req.department}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="p-3">
                         <span className="font-semibold text-slate-800 block">{req.waterDetail?.roomName}</span>
+                        {req.waterDetail?.locationId && (
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {waterLocations.find(l => l.id === req.waterDetail?.locationId)?.code || ''}
+                          </span>
+                        )}
                       </td>
                       <td className="p-3 text-slate-600 font-medium">{req.waterDetail?.requestType}</td>
                       <td className="p-3 text-center font-bold text-cyan-800 bg-cyan-50/50">
@@ -957,8 +1022,8 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
             </span>
           </div>
 
-          {/* 2. Requester Name & Unit Selection */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          {/* 2. Requester Name & Unit & Department Selection */}
+          <div className="space-y-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
             <div>
               <UserSearchSelect
                 users={users}
@@ -968,53 +1033,173 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                 themeColor="cyan"
                 helperText="Cari nama karyawan, unit, atau departemen di daftar user"
               />
+              {/* Profile Badge Indicator */}
+              {(() => {
+                const currentSelectedUser = users.find(u => u.id === requestForm.userId) || currentUser;
+                return currentSelectedUser ? (
+                  <div className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-600 bg-white p-2 rounded-lg border border-slate-200 shadow-xs">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Data Master Pengguna:</span>
+                    <span className="px-1.5 py-0.5 bg-cyan-100 text-cyan-800 font-bold rounded text-[10px]">
+                      Unit: {currentSelectedUser.unit || '-'}
+                    </span>
+                    <span className="text-slate-700 font-semibold text-[11px]">
+                      Dept: {currentSelectedUser.department || '-'}
+                    </span>
+                    <span className="text-slate-400 ml-auto font-mono text-[10px]">
+                      {currentSelectedUser.email}
+                    </span>
+                  </div>
+                ) : null;
+              })()}
             </div>
 
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">
-                Nama Unit *
-              </label>
-              <select
-                value={requestForm.unit}
-                onChange={(e) => {
-                  const newUnit = e.target.value;
-                  const unitLoc = waterLocations.find(l => l.unit === newUnit);
-                  setRequestForm(prev => ({
-                    ...prev,
-                    unit: newUnit,
-                    locationId: unitLoc ? unitLoc.id : prev.locationId
-                  }));
-                }}
-                className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-800 outline-cyan-600 font-medium text-xs"
-                required
-              >
-                {['TK', 'SD', 'SMP', 'SMA', 'General Affairs', 'Security', 'IT', 'Finance', 'HR', 'Resources', 'Management'].map(u => (
-                  <option key={u} value={u}>Unit {u}</option>
-                ))}
-              </select>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Nama Unit *
+                </label>
+                <select
+                  value={requestForm.unit}
+                  onChange={(e) => {
+                    const newUnit = e.target.value;
+                    const matchedLoc = getMatchingLocationForUnit(newUnit);
+                    setRequestForm(prev => ({
+                      ...prev,
+                      unit: newUnit,
+                      locationId: matchedLoc ? matchedLoc.id : (prev.locationId || waterLocations[0]?.id || 'custom')
+                    }));
+                  }}
+                  className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-800 outline-cyan-600 font-semibold text-xs"
+                  required
+                >
+                  {units.length > 0 ? (
+                    units.map(u => (
+                      <option key={u.id} value={u.code}>
+                        Unit {u.code} - {u.name}
+                      </option>
+                    ))
+                  ) : (
+                    ['TK', 'SD', 'SMP', 'SMA', 'General Affairs', 'Security', 'IT', 'Finance', 'HR', 'Resources', 'Management'].map(u => (
+                      <option key={u} value={u}>Unit {u}</option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Departemen / Bagian *
+                </label>
+                <input
+                  type="text"
+                  value={requestForm.department}
+                  onChange={(e) => setRequestForm(prev => ({ ...prev, department: e.target.value }))}
+                  placeholder="Contoh: Guru Kelas 4, Tim Sarpras, Tata Usaha, IT Support..."
+                  className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-800 outline-cyan-600 font-semibold text-xs"
+                  required
+                />
+                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  Otomatis terisi dari data user terpilih, dapat disesuaikan jika perlu
+                </span>
+              </div>
             </div>
           </div>
 
           {/* 3. Room Location & Request Type */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">
-                Lokasi Ruangan / Titik Dispenser *
+              <label className="block font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Lokasi Ruangan / Titik Dispenser *</span>
+                <span className="text-[10px] text-cyan-700 font-normal">
+                  {waterLocations.length} titik terdaftar
+                </span>
               </label>
               <select
                 value={requestForm.locationId}
-                onChange={(e) => setRequestForm({ ...requestForm, locationId: e.target.value, customRoomName: '' })}
-                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 outline-cyan-600 font-medium"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === 'custom') {
+                    setRequestForm(prev => ({
+                      ...prev,
+                      locationId: 'custom'
+                    }));
+                  } else {
+                    const loc = waterLocations.find(l => l.id === val);
+                    setRequestForm(prev => ({
+                      ...prev,
+                      locationId: val,
+                      customRoomName: '',
+                      unit: loc?.unit || prev.unit,
+                      department: loc?.department || prev.department
+                    }));
+                  }
+                }}
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 outline-cyan-600 font-medium text-xs"
                 required
               >
-                {waterLocations
-                  .filter(l => !requestForm.unit || l.unit === requestForm.unit)
-                  .map(l => (
+                <option value="" disabled>-- Pilih Titik Dispenser / Lokasi Galon --</option>
+
+                {matchingLocations.length > 0 && (
+                  <optgroup label={`⭐ Rekomendasi Titik Galon Unit ${requestForm.unit} (${matchingLocations.length} Titik)`}>
+                    {matchingLocations.map(l => (
+                      <option key={l.id} value={l.id}>
+                        [{l.code || `TG-${l.unit}`}] {l.roomName} • {l.unit} ({l.floor}) {l.activeGallons ? `[${l.activeGallons} Galon Aktif]` : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+
+                <optgroup label={matchingLocations.length > 0 ? "🏢 Titik Dispenser Unit & Gedung Lainnya" : "🏢 Daftar Semua Titik Dispenser Kampus"}>
+                  {(matchingLocations.length > 0 ? otherLocations : waterLocations).map(l => (
                     <option key={l.id} value={l.id}>
-                      [{l.code || `TG-${l.unit.slice(0, 3).toUpperCase()}`}] {l.roomName} &bull; {l.unit} {l.department ? `(${l.department})` : ''} - {l.floor}
+                      [{l.code || `TG-${l.unit}`}] {l.roomName} • {l.unit} ({l.floor}) {l.activeGallons ? `[${l.activeGallons} Galon]` : ''}
                     </option>
                   ))}
+                </optgroup>
+
+                <optgroup label="➕ Titik Ruangan Tambahan / Baru">
+                  <option value="custom">✏️ + Titik Ruangan Lainnya (Ketik Manual)</option>
+                </optgroup>
               </select>
+
+              {/* Custom Room Name input if 'custom' is selected */}
+              {requestForm.locationId === 'custom' && (
+                <div className="mt-2 bg-cyan-50/70 p-2.5 rounded-lg border border-cyan-300">
+                  <label className="block font-bold text-cyan-900 mb-1 text-[11px]">
+                    Nama Ruangan / Titik Penempatan Galon Baru *
+                  </label>
+                  <input
+                    type="text"
+                    value={requestForm.customRoomName}
+                    onChange={(e) => setRequestForm(prev => ({ ...prev, customRoomName: e.target.value }))}
+                    placeholder="Contoh: Ruang Kasir & Keuangan Lt 1, Ruang Rapat HRD..."
+                    className="w-full p-2 bg-white border border-cyan-400 rounded-lg text-slate-900 text-xs font-semibold outline-cyan-600"
+                    required
+                  />
+                  <span className="text-[10px] text-cyan-700 mt-1 block">
+                    Tuliskan nama ruangan atau lantai penempatan galon baru ini.
+                  </span>
+                </div>
+              )}
+
+              {/* Location Details Pill */}
+              {requestForm.locationId !== 'custom' && (() => {
+                const selLoc = waterLocations.find(l => l.id === requestForm.locationId);
+                if (!selLoc) return null;
+                return (
+                  <div className="mt-1.5 flex items-center justify-between text-[11px] bg-cyan-50/60 border border-cyan-200 px-2.5 py-1.5 rounded-lg text-cyan-950">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <MapPin className="w-3.5 h-3.5 text-cyan-700 shrink-0" />
+                      <span className="truncate">
+                        <strong>{selLoc.roomName}</strong> &bull; {selLoc.building || `Gedung ${selLoc.unit}`} ({selLoc.floor})
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-bold bg-white text-cyan-800 px-1.5 py-0.5 rounded border border-cyan-200 shrink-0 ml-1">
+                      {selLoc.dispenserBrand || 'Dispenser'} ({selLoc.activeGallons || 1} Galon)
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
 
             <div>
