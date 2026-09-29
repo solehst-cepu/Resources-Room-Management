@@ -35,6 +35,7 @@ import { StatusBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { UserSearchSelect } from '../components/common/UserSearchSelect';
 import { resolveUnitHeadInfo } from '../services/emailService';
+import { resolveCanonicalUnit, isSameUnit } from '../utils/unitUtils';
 
 interface WaterServiceViewProps {
   onOpenReceipt: (req: ServiceRequest) => void;

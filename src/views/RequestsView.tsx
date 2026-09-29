@@ -27,6 +27,7 @@ import { StatusBadge, UrgencyBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { TrackOrderModal } from '../components/common/TrackOrderModal';
 import { EmailReportModal } from '../components/common/EmailReportModal';
+import { resolveCanonicalUnit, isSameUnit } from '../utils/unitUtils';
 
 interface RequestsViewProps {
   filterStatus?: string;
@@ -125,24 +126,28 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
       matchStatus = req.status === selectedStatus;
     }
 
-    const matchUnit = selectedUnit === 'all' || req.unit === selectedUnit;
+    const matchUnit = selectedUnit === 'all' || isSameUnit(req.unit, selectedUnit, units);
     const matchUrgency = selectedUrgency === 'all' || req.urgency === selectedUrgency;
 
     return matchSearch && matchService && matchStatus && matchUnit && matchUrgency;
   });
 
   const exportToCSV = () => {
-    const headers = ['No Tiket', 'Tanggal', 'Layanan', 'Pemohon', 'Unit', 'Keperluan', 'Urgensi', 'Status'];
-    const rows = filteredRequests.map(r => [
-      r.requestNumber,
-      new Date(r.requestDate).toLocaleDateString('id-ID'),
-      r.serviceType,
-      r.userName,
-      r.unit,
-      `"${r.purpose.replace(/"/g, '""')}"`,
-      r.urgency,
-      r.status
-    ]);
+    const headers = ['No Tiket', 'Tanggal', 'Layanan', 'Pemohon', 'Kode Unit', 'Nama Unit', 'Keperluan', 'Urgensi', 'Status'];
+    const rows = filteredRequests.map(r => {
+      const canonical = resolveCanonicalUnit(r.unit, units);
+      return [
+        r.requestNumber,
+        new Date(r.requestDate).toLocaleDateString('id-ID'),
+        r.serviceType,
+        r.userName,
+        canonical.code,
+        canonical.name,
+        `"${r.purpose.replace(/"/g, '""')}"`,
+        r.urgency,
+        r.status
+      ];
+    });
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
@@ -303,7 +308,21 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                       <strong className="text-slate-900 block">{req.userName}</strong>
                       <span className="text-[10px] text-slate-400">{req.department}</span>
                     </td>
-                    <td className="p-3.5 text-slate-600">{req.unit}</td>
+                    <td className="p-3.5 whitespace-nowrap">
+                      {(() => {
+                        const canonical = resolveCanonicalUnit(req.unit, units);
+                        return (
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold text-[10px] border border-slate-200">
+                              {canonical.code}
+                            </span>
+                            <span className="font-semibold text-slate-800 text-xs">
+                              {canonical.name}
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </td>
                     <td className="p-3.5">
                       <p className="text-slate-900 font-medium max-w-xs truncate">{req.purpose}</p>
                       {req.items.length > 0 && (

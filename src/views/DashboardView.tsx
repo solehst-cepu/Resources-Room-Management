@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { StatsCard } from '../components/common/StatsCard';
 import { StatusBadge, UrgencyBadge } from '../components/common/Badge';
+import { resolveCanonicalUnit } from '../utils/unitUtils';
 
 interface DashboardViewProps {
   onNavigate: (tab: string) => void;
@@ -33,7 +34,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenQuickRequest,
   onOpenReceipt
 }) => {
-  const { currentUser, requests, items, uniforms, waterLocations, waterInventory } = useApp();
+  const { currentUser, requests, items, uniforms, waterLocations, waterInventory, units } = useApp();
   const [chartPeriod, setChartPeriod] = useState<'harian' | 'mingguan' | 'bulanan' | 'tahunan'>('bulanan');
 
   // Stats Calculations
@@ -64,13 +65,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     .filter(r => r.serviceType === 'air_galon' && r.waterDetail)
     .reduce((acc, r) => acc + (r.waterDetail?.gallonCount || 0), 0);
 
-  // Unit usage aggregation
-  const unitUsageMap: Record<string, number> = {};
+  // Unit usage aggregation (Standardized by Canonical Unit)
+  const unitUsageMap: Record<string, { code: string; name: string; count: number }> = {};
   requests.forEach(r => {
-    unitUsageMap[r.unit] = (unitUsageMap[r.unit] || 0) + 1;
+    const canonical = resolveCanonicalUnit(r.unit, units);
+    const key = canonical.code;
+    if (!unitUsageMap[key]) {
+      unitUsageMap[key] = {
+        code: canonical.code,
+        name: canonical.name,
+        count: 0
+      };
+    }
+    unitUsageMap[key].count += 1;
   });
 
-  const sortedUnits = Object.entries(unitUsageMap).sort((a, b) => b[1] - a[1]);
+  const sortedUnits = Object.values(unitUsageMap).sort((a, b) => b.count - a.count);
 
   // Service breakdown
   const serviceCounts = {
@@ -342,18 +352,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {sortedUnits.length === 0 ? (
                 <p className="text-xs text-slate-400 py-6 text-center">Belum ada transaksi per unit</p>
               ) : (
-                sortedUnits.slice(0, 6).map(([unitName, count], idx) => {
-                  const percent = Math.round((count / (requests.length || 1)) * 100);
+                sortedUnits.slice(0, 6).map((u, idx) => {
+                  const percent = Math.round((u.count / (requests.length || 1)) * 100);
                   return (
-                    <div key={unitName} className="flex items-center justify-between text-xs">
+                    <div key={u.code} className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2">
                         <span className="w-5 h-5 rounded-full bg-blue-50 text-blue-800 font-bold flex items-center justify-center text-[10px] border border-blue-100">
                           {idx + 1}
                         </span>
-                        <span className="font-semibold text-slate-800">{unitName}</span>
+                        <span className="font-semibold text-slate-800">{u.name} ({u.code})</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-slate-500">{count} permohonan</span>
+                        <span className="text-slate-500">{u.count} permohonan</span>
                         <span className="font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded text-[11px] border border-blue-100">
                           {percent}%
                         </span>
@@ -414,7 +424,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {req.serviceType.replace('_', ' ')}
                   </td>
                   <td className="p-3.5 font-medium">{req.userName}</td>
-                  <td className="p-3.5 text-slate-500">{req.unit}</td>
+                  <td className="p-3.5 text-slate-700 font-medium">
+                    {(() => {
+                      const canonical = resolveCanonicalUnit(req.unit, units);
+                      return `${canonical.code} (${canonical.name})`;
+                    })()}
+                  </td>
                   <td className="p-3.5 text-slate-600 max-w-xs truncate">{req.purpose}</td>
                   <td className="p-3.5">
                     <UrgencyBadge urgency={req.urgency} />

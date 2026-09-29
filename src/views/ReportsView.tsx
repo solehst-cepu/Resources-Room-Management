@@ -22,6 +22,7 @@ import autoTable from 'jspdf-autotable';
 import { StatusBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ServiceRequest } from '../types';
+import { resolveCanonicalUnit, isSameUnit } from '../utils/unitUtils';
 
 interface ReportsViewProps {
   initialServiceFilter?: string;
@@ -119,18 +120,21 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
       // Service filter
       if (serviceFilter !== 'all' && r.serviceType !== serviceFilter) return false;
 
-      // Unit filter
-      if (unitFilter !== 'all' && r.unit.toLowerCase() !== unitFilter.toLowerCase()) return false;
+      // Unit filter (Matches canonical unit accurately)
+      if (unitFilter !== 'all' && !isSameUnit(r.unit, unitFilter, units)) return false;
 
       // Status filter
       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
 
-      // Search Query
+      // Search Query (Supports searching by unit code or full unit name)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchNum = r.requestNumber?.toLowerCase().includes(q);
         const matchUser = r.userName?.toLowerCase().includes(q);
-        const matchUnit = r.unit?.toLowerCase().includes(q);
+        const canonical = resolveCanonicalUnit(r.unit, units);
+        const matchUnit = r.unit?.toLowerCase().includes(q) ||
+                          canonical.code.toLowerCase().includes(q) ||
+                          canonical.name.toLowerCase().includes(q);
         const matchPurpose = r.purpose?.toLowerCase().includes(q);
         const matchRoom = r.waterDetail?.roomName?.toLowerCase().includes(q);
         if (!matchNum && !matchUser && !matchUnit && !matchPurpose && !matchRoom) {
@@ -140,7 +144,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
 
       return true;
     });
-  }, [requests, startDate, endDate, serviceFilter, unitFilter, statusFilter, searchQuery]);
+  }, [requests, startDate, endDate, serviceFilter, unitFilter, statusFilter, searchQuery, units]);
 
   // Helper for Volume Description
   const getRequestVolumeText = (r: ServiceRequest): string => {
@@ -178,9 +182,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
     .filter(r => r.serviceType === 'air_galon' && r.waterDetail)
     .reduce((acc, r) => acc + (r.waterDetail?.emptyGallonsReturned || 0), 0);
 
-  // Unit Breakdown Matrix
+  // Unit Breakdown Matrix (Standardized & Merged by Canonical Unit - SD and SD Lazuardi merge into 1 row)
   const unitBreakdown = useMemo(() => {
     const map: Record<string, {
+      code: string;
       unitName: string;
       ticketCount: number;
       fotocopySheets: number;
@@ -191,7 +196,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
 
     // Initialize with all existing units from context
     units.forEach(u => {
-      map[u.code] = {
+      const codeKey = u.code.toUpperCase().trim();
+      map[codeKey] = {
+        code: codeKey,
         unitName: u.name,
         ticketCount: 0,
         fotocopySheets: 0,
@@ -201,12 +208,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
       };
     });
 
-    // Populate data
+    // Populate data - strictly mapped to canonical unit so "SD" and "SD Lazuardi" merge into the same row
     filteredRequests.forEach(r => {
-      const uKey = r.unit || 'General';
+      const canonical = resolveCanonicalUnit(r.unit, units);
+      const uKey = canonical.code.toUpperCase().trim();
       if (!map[uKey]) {
         map[uKey] = {
-          unitName: uKey,
+          code: uKey,
+          unitName: canonical.name,
           ticketCount: 0,
           fotocopySheets: 0,
           laminatingSheets: 0,
@@ -227,14 +236,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
       }
     });
 
-    return Object.entries(map)
-      .map(([code, val]) => ({ code, ...val }))
-      .filter(item => unitFilter === 'all' ? item.ticketCount > 0 : item.code.toLowerCase() === unitFilter.toLowerCase())
+    return Object.values(map)
+      .filter(item => {
+        if (unitFilter === 'all') return item.ticketCount > 0;
+        return isSameUnit(item.code, unitFilter, units);
+      })
       .sort((a, b) => b.ticketCount - a.ticketCount);
   }, [filteredRequests, units, unitFilter]);
 
   // Top user unit by tickets
-  const topUnit = unitBreakdown[0]?.code || '-';
+  const topUnitObj = unitBreakdown[0];
+  const topUnit = topUnitObj ? `${topUnitObj.code} (${topUnitObj.unitName})` : '-';
 
   // Export CSV
   const exportToCSV = () => {
@@ -250,29 +262,30 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
 
     // 1. Rekap Per Unit Table
     csvContent += '=== REKAPITULASI JUMLAH PENGGUNAAN PER UNIT SEKOLAH ===\n';
-    csvContent += 'Unit Sekolah,Jumlah Permintaan (Tiket),Foto Copy (Lembar),Laminating (Lembar),Air Galon Isi (Galon),Galon Kosong Retur (Galon),Persentase Permintaan (%)\n';
+    csvContent += 'Kode Unit,Nama Unit Sekolah,Jumlah Permintaan (Tiket),Foto Copy (Lembar),Laminating (Lembar),Air Galon Isi (Galon),Galon Kosong Retur (Galon),Persentase Permintaan (%)\n';
     
     const totalTickets = filteredRequests.length;
 
     unitBreakdown.forEach(u => {
       const pct = totalTickets > 0 ? Math.round((u.ticketCount / totalTickets) * 100) : 0;
-      csvContent += `"${u.code} - ${u.unitName}",${u.ticketCount},${u.fotocopySheets},${u.laminatingSheets},${u.waterGallons},${u.emptyGallons},${pct}%\n`;
+      csvContent += `"${u.code}","${u.unitName}",${u.ticketCount},${u.fotocopySheets},${u.laminatingSheets},${u.waterGallons},${u.emptyGallons},${pct}%\n`;
     });
 
-    csvContent += `TOTAL KESELURUHAN,${totalTickets},${totalFotocopySheets},${totalLaminatingSheets},${totalWaterGallons},${totalEmptyGallonsReturned},100%\n\n`;
+    csvContent += `TOTAL KESELURUHAN,-,${totalTickets},${totalFotocopySheets},${totalLaminatingSheets},${totalWaterGallons},${totalEmptyGallonsReturned},100%\n\n`;
 
     // 2. Rincian Transaksi
     csvContent += '=== RINCIAN LOG TRANSAKSI PERMINTAAN ===\n';
-    csvContent += 'Tanggal,Nomor Tiket,Unit,Nama Pemohon,Layanan,Keperluan / Ruangan,Jumlah & Rincian Volume,Status,Penerima / Petugas\n';
+    csvContent += 'Tanggal,Nomor Tiket,Kode Unit,Nama Unit Sekolah,Nama Pemohon,Layanan,Keperluan / Ruangan,Jumlah & Rincian Volume,Status,Penerima / Petugas\n';
 
     filteredRequests.forEach(r => {
       const date = (r.requestDate || '').slice(0, 10);
+      const canonical = resolveCanonicalUnit(r.unit, units);
       const svc = r.serviceType === 'fotocopy' ? 'Foto Copy' : r.serviceType === 'laminating' ? 'Laminating' : r.serviceType === 'air_galon' ? 'Air Galon' : r.serviceType;
       const vol = getRequestVolumeText(r).replace(/"/g, '""');
       const receiver = r.pickedUpBy || r.userName || '-';
       const purpose = (r.purpose || r.waterDetail?.roomName || '-').replace(/"/g, '""');
 
-      csvContent += `"${date}","${r.requestNumber}","${r.unit}","${r.userName}","${svc}","${purpose}","${vol}","${r.status}","${receiver}"\n`;
+      csvContent += `"${date}","${r.requestNumber}","${canonical.code}","${canonical.name}","${r.userName}","${svc}","${purpose}","${vol}","${r.status}","${receiver}"\n`;
     });
 
     const encodedUri = encodeURI(csvContent);
@@ -427,6 +440,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
 
     const transactionRows = filteredRequests.map((r, idx) => {
       const date = (r.requestDate || '').slice(0, 10);
+      const canonical = resolveCanonicalUnit(r.unit, units);
       const svc = r.serviceType === 'fotocopy' ? 'Foto Copy' : r.serviceType === 'laminating' ? 'Laminating' : r.serviceType === 'air_galon' ? 'Air Galon' : r.serviceType;
       const vol = getRequestVolumeText(r);
       const receiver = r.pickedUpBy || r.userName || '-';
@@ -436,7 +450,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
         (idx + 1).toString(),
         date,
         r.requestNumber,
-        r.unit,
+        `${canonical.code} - ${canonical.name}`,
         r.userName,
         svc,
         `${purpose} (${vol})`,
@@ -882,8 +896,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
                       return (
                         <tr key={u.code} className="hover:bg-slate-50/70 transition-colors">
                           <td className="p-3.5 font-bold text-slate-900">
-                            <div>{u.code}</div>
-                            <span className="text-[10px] text-slate-400 font-normal">{u.unitName}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-bold text-xs">
+                                {u.code}
+                              </span>
+                              <span className="font-semibold text-slate-900 text-xs">{u.unitName}</span>
+                            </div>
                           </td>
                           <td className="p-3.5 text-center font-bold text-slate-800">
                             {u.ticketCount} Tiket
@@ -1122,8 +1140,20 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialServiceFilter }
                         <td className="p-3.5 font-bold font-mono text-slate-900 whitespace-nowrap">
                           {r.requestNumber}
                         </td>
-                        <td className="p-3.5 font-semibold text-slate-800 whitespace-nowrap">
-                          {r.unit}
+                        <td className="p-3.5 whitespace-nowrap">
+                          {(() => {
+                            const canonical = resolveCanonicalUnit(r.unit, units);
+                            return (
+                              <div className="flex items-center gap-1.5">
+                                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold text-[10px] border border-slate-200">
+                                  {canonical.code}
+                                </span>
+                                <span className="font-semibold text-slate-800 text-xs">
+                                  {canonical.name}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="p-3.5 text-slate-900 font-medium">
                           {r.userName}

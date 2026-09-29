@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { StatusBadge, UrgencyBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
+import { resolveCanonicalUnit, isSameUnit } from '../utils/unitUtils';
 import { UserSearchSelect } from '../components/common/UserSearchSelect';
 import { TrackOrderModal } from '../components/common/TrackOrderModal';
 import { EmailReportModal } from '../components/common/EmailReportModal';
@@ -201,7 +202,7 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
       (req.photocopyDetail?.documentType || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (req.purpose || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchStatus = statusFilter === 'all' || req.status === statusFilter;
-    const matchUnit = unitFilter === 'all' || req.unit === unitFilter;
+    const matchUnit = unitFilter === 'all' || isSameUnit(req.unit, unitFilter, units);
     return matchSearch && matchStatus && matchUnit;
   });
 
@@ -259,7 +260,7 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
       userId: user?.id || 'usr-guest',
       userName: user?.name || 'Karyawan Lazuardi',
       userEmail: user?.email || 'staff@lazuardi.sch.id',
-      unit: selectedUnit || user?.unit || 'SMP',
+      unit: resolveCanonicalUnit(selectedUnit || user?.unit || 'SMP', units).code,
       department: user?.department || 'Akademik',
       urgency,
       purpose: `${documentType} - ${calculatedTotalSheets} Lembar ${paperSize}`,
