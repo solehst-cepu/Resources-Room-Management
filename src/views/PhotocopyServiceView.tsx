@@ -97,8 +97,8 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
   const [selectedUnit, setSelectedUnit] = useState<string>(currentUser?.unit || 'SMP');
   const [documentType, setDocumentType] = useState<string>('Soal Ujian / Penilaian');
   const [paperSize, setPaperSize] = useState<'A4' | 'Folio (F4)' | 'A3'>('A4');
-  const [pageCount, setPageCount] = useState<number>(5);
-  const [copyCount, setCopyCount] = useState<number>(25);
+  const [pageCount, setPageCount] = useState<number | ''>(5);
+  const [copyCount, setCopyCount] = useState<number | ''>(25);
   const [binding, setBinding] = useState<string>('Staples Sudut Kiri Atas');
   const [deadlineDate, setDeadlineDate] = useState<string>(
     new Date(Date.now() + 86400000).toISOString().slice(0, 16)
@@ -207,7 +207,9 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
   });
 
   // Calculate total sheets dynamically
-  const calculatedTotalSheets = Math.max(1, pageCount) * Math.max(1, copyCount);
+  const numericPageCount = typeof pageCount === 'number' ? pageCount : (parseInt(String(pageCount), 10) || 0);
+  const numericCopyCount = typeof copyCount === 'number' ? copyCount : (parseInt(String(copyCount), 10) || 0);
+  const calculatedTotalSheets = numericPageCount * numericCopyCount;
 
   // File upload / Photo capture
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -239,13 +241,17 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
     e.preventDefault();
     const user = users.find(u => u.id === selectedUserId) || currentUser;
 
+    const finalPageCount = Math.max(1, numericPageCount || 1);
+    const finalCopyCount = Math.max(1, numericCopyCount || 1);
+    const finalTotalSheets = finalPageCount * finalCopyCount;
+
     const photocopyDetail: PhotocopyDetail = {
       serviceType: 'Foto Copy',
       documentType,
       paperSize,
-      pageCount: Math.max(1, pageCount),
-      copyCount: Math.max(1, copyCount),
-      totalSheets: calculatedTotalSheets,
+      pageCount: finalPageCount,
+      copyCount: finalCopyCount,
+      totalSheets: finalTotalSheets,
       binding,
       deadlineDate,
       photoUrl: photoPreview || undefined,
@@ -263,7 +269,7 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
       unit: resolveCanonicalUnit(selectedUnit || user?.unit || 'SMP', units).code,
       department: user?.department || 'Akademik',
       urgency,
-      purpose: `${documentType} - ${calculatedTotalSheets} Lembar ${paperSize}`,
+      purpose: `${documentType} - ${finalTotalSheets} Lembar ${paperSize}`,
       notes: notes.trim() || undefined,
       items: [],
       photocopyDetail
@@ -715,8 +721,17 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
                   type="number"
                   min="1"
                   max="1000"
+                  placeholder="Contoh: 4"
                   value={pageCount}
-                  onChange={(e) => setPageCount(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/^0+/, '');
+                    if (cleaned === '') {
+                      setPageCount('');
+                    } else {
+                      const parsed = parseInt(cleaned, 10);
+                      setPageCount(isNaN(parsed) || parsed < 1 ? '' : parsed);
+                    }
+                  }}
                   className="w-full p-2 bg-white border border-blue-300 rounded-lg text-slate-900 font-bold focus:border-blue-600 focus:outline-hidden"
                   required
                 />
@@ -729,8 +744,17 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
                   type="number"
                   min="1"
                   max="5000"
+                  placeholder="Contoh: 30"
                   value={copyCount}
-                  onChange={(e) => setCopyCount(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/^0+/, '');
+                    if (cleaned === '') {
+                      setCopyCount('');
+                    } else {
+                      const parsed = parseInt(cleaned, 10);
+                      setCopyCount(isNaN(parsed) || parsed < 1 ? '' : parsed);
+                    }
+                  }}
                   className="w-full p-2 bg-white border border-blue-300 rounded-lg text-slate-900 font-bold focus:border-blue-600 focus:outline-hidden"
                   required
                 />
@@ -747,7 +771,7 @@ export const PhotocopyServiceView: React.FC<PhotocopyServiceViewProps> = ({ onOp
 
             <div className="p-2 bg-white rounded-lg border border-blue-200 flex items-center justify-between text-[11px] text-blue-900">
               <span>
-                Rumus: <strong>{pageCount} Halaman Asli</strong> × <strong>{copyCount} Rangkap</strong>
+                Rumus: <strong>{numericPageCount} Halaman Asli</strong> × <strong>{numericCopyCount} Rangkap</strong>
               </span>
               <span className="font-extrabold text-blue-800">
                 = {calculatedTotalSheets} Lembar Kertas {paperSize}

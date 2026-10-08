@@ -249,8 +249,8 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
         locationId: loc?.id,
         roomName: room,
         requestType: requestForm.requestType,
-        gallonCount: Number(requestForm.gallonCount),
-        emptyGallonsReturned: Number(requestForm.emptyGallonsReturned),
+        gallonCount: Math.max(1, Number(requestForm.gallonCount) || 1),
+        emptyGallonsReturned: Number(requestForm.emptyGallonsReturned) || 0,
         notes: requestForm.notes
       }
     });
@@ -1238,9 +1238,11 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                   type="number"
                   min="1"
                   max="15"
-                  value={requestForm.gallonCount}
+                  placeholder="Contoh: 1"
+                  value={requestForm.gallonCount === 0 ? '' : requestForm.gallonCount}
                   onChange={(e) => {
-                    const count = Number(e.target.value);
+                    const cleaned = e.target.value.replace(/^0+/, '');
+                    const count = cleaned === '' ? 0 : Number(cleaned);
                     setRequestForm(prev => ({
                       ...prev,
                       gallonCount: count,
@@ -1266,10 +1268,13 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                   type="number"
                   min="0"
                   max="15"
-                  value={requestForm.emptyGallonsReturned}
-                  onChange={(e) => setRequestForm({ ...requestForm, emptyGallonsReturned: Number(e.target.value) })}
+                  placeholder="Contoh: 1"
+                  value={requestForm.emptyGallonsReturned === 0 ? '' : requestForm.emptyGallonsReturned}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/^0+/, '');
+                    setRequestForm({ ...requestForm, emptyGallonsReturned: cleaned === '' ? 0 : Number(cleaned) });
+                  }}
                   className="w-full p-2.5 bg-white border border-amber-300 rounded-lg text-slate-900 font-bold outline-amber-600"
-                  required
                 />
                 <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-medium">Galon Kosong</span>
               </div>
@@ -1406,8 +1411,12 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                 type="number"
                 min="1"
                 max="200"
-                value={providerForm.filledReceived}
-                onChange={(e) => setProviderForm({ ...providerForm, filledReceived: Number(e.target.value) })}
+                placeholder="Contoh: 40"
+                value={providerForm.filledReceived === 0 ? '' : providerForm.filledReceived}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/^0+/, '');
+                  setProviderForm({ ...providerForm, filledReceived: cleaned === '' ? 0 : Number(cleaned) });
+                }}
                 className="w-full p-2 bg-white border border-emerald-300 rounded-lg text-emerald-900 font-bold"
                 required
               />
@@ -1422,10 +1431,13 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                 type="number"
                 min="0"
                 max="200"
-                value={providerForm.emptyReturned}
-                onChange={(e) => setProviderForm({ ...providerForm, emptyReturned: Number(e.target.value) })}
+                placeholder="Contoh: 40"
+                value={providerForm.emptyReturned === 0 ? '' : providerForm.emptyReturned}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/^0+/, '');
+                  setProviderForm({ ...providerForm, emptyReturned: cleaned === '' ? 0 : Number(cleaned) });
+                }}
                 className="w-full p-2 bg-white border border-amber-300 rounded-lg text-amber-900 font-bold"
-                required
               />
               <span className="text-[10px] text-slate-400 mt-1 block">Mengurangi galon kosong di RR</span>
             </div>
@@ -1501,8 +1513,12 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
               <input
                 type="number"
                 min="1"
-                value={opnameForm.initialTotalAssets}
-                onChange={(e) => setOpnameForm({ ...opnameForm, initialTotalAssets: Number(e.target.value) })}
+                placeholder="Contoh: 68"
+                value={opnameForm.initialTotalAssets === 0 ? '' : opnameForm.initialTotalAssets}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/^0+/, '');
+                  setOpnameForm({ ...opnameForm, initialTotalAssets: cleaned === '' ? 0 : Number(cleaned) });
+                }}
                 className="w-full p-2 bg-white border border-slate-300 rounded-lg text-cyan-900 font-bold"
                 required
               />
@@ -1523,10 +1539,13 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                 <input
                   type="number"
                   min="0"
-                  value={opnameForm.physicalFilled}
-                  onChange={(e) => setOpnameForm({ ...opnameForm, physicalFilled: Number(e.target.value) })}
+                  placeholder="0"
+                  value={opnameForm.physicalFilled === 0 ? '' : opnameForm.physicalFilled}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/^0+/, '');
+                    setOpnameForm({ ...opnameForm, physicalFilled: cleaned === '' ? 0 : Number(cleaned) });
+                  }}
                   className="w-full p-2 bg-white border border-emerald-300 rounded-lg text-emerald-900 font-bold"
-                  required
                 />
               </div>
 
@@ -1537,10 +1556,13 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                 <input
                   type="number"
                   min="0"
-                  value={opnameForm.physicalEmpty}
-                  onChange={(e) => setOpnameForm({ ...opnameForm, physicalEmpty: Number(e.target.value) })}
+                  placeholder="0"
+                  value={opnameForm.physicalEmpty === 0 ? '' : opnameForm.physicalEmpty}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/^0+/, '');
+                    setOpnameForm({ ...opnameForm, physicalEmpty: cleaned === '' ? 0 : Number(cleaned) });
+                  }}
                   className="w-full p-2 bg-white border border-amber-300 rounded-lg text-amber-900 font-bold"
-                  required
                 />
               </div>
 
@@ -1551,10 +1573,13 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                 <input
                   type="number"
                   min="0"
-                  value={opnameForm.physicalInRooms}
-                  onChange={(e) => setOpnameForm({ ...opnameForm, physicalInRooms: Number(e.target.value) })}
+                  placeholder="0"
+                  value={opnameForm.physicalInRooms === 0 ? '' : opnameForm.physicalInRooms}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/^0+/, '');
+                    setOpnameForm({ ...opnameForm, physicalInRooms: cleaned === '' ? 0 : Number(cleaned) });
+                  }}
                   className="w-full p-2 bg-white border border-blue-300 rounded-lg text-blue-900 font-bold"
-                  required
                 />
               </div>
 
@@ -1565,8 +1590,12 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                 <input
                   type="number"
                   min="0"
-                  value={opnameForm.physicalDamaged}
-                  onChange={(e) => setOpnameForm({ ...opnameForm, physicalDamaged: Number(e.target.value) })}
+                  placeholder="0"
+                  value={opnameForm.physicalDamaged === 0 ? '' : opnameForm.physicalDamaged}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/^0+/, '');
+                    setOpnameForm({ ...opnameForm, physicalDamaged: cleaned === '' ? 0 : Number(cleaned) });
+                  }}
                   className="w-full p-2 bg-white border border-rose-300 rounded-lg text-rose-900 font-bold"
                 />
               </div>
@@ -1578,8 +1607,12 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                 <input
                   type="number"
                   min="0"
-                  value={opnameForm.physicalLost}
-                  onChange={(e) => setOpnameForm({ ...opnameForm, physicalLost: Number(e.target.value) })}
+                  placeholder="0"
+                  value={opnameForm.physicalLost === 0 ? '' : opnameForm.physicalLost}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/^0+/, '');
+                    setOpnameForm({ ...opnameForm, physicalLost: cleaned === '' ? 0 : Number(cleaned) });
+                  }}
                   className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-bold"
                 />
               </div>
@@ -1653,8 +1686,12 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
               type="number"
               min="1"
               max="500"
-              value={initialAssetsInput}
-              onChange={(e) => setInitialAssetsInput(Number(e.target.value))}
+              placeholder="Contoh: 68"
+              value={initialAssetsInput === 0 ? '' : initialAssetsInput}
+              onChange={(e) => {
+                const cleaned = e.target.value.replace(/^0+/, '');
+                setInitialAssetsInput(cleaned === '' ? 0 : Number(cleaned));
+              }}
               className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-cyan-900 font-extrabold text-base"
               required
             />
@@ -1735,8 +1772,12 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
               <input
                 type="number"
                 min="1"
-                value={locForm.dispenserCount}
-                onChange={(e) => setLocForm({ ...locForm, dispenserCount: Number(e.target.value) })}
+                placeholder="Contoh: 1"
+                value={locForm.dispenserCount === 0 ? '' : locForm.dispenserCount}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/^0+/, '');
+                  setLocForm({ ...locForm, dispenserCount: cleaned === '' ? 0 : Number(cleaned) });
+                }}
                 className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-800"
               />
             </div>
@@ -1745,8 +1786,12 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
               <input
                 type="number"
                 min="0"
-                value={locForm.activeGallons}
-                onChange={(e) => setLocForm({ ...locForm, activeGallons: Number(e.target.value) })}
+                placeholder="Contoh: 1"
+                value={locForm.activeGallons === 0 ? '' : locForm.activeGallons}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/^0+/, '');
+                  setLocForm({ ...locForm, activeGallons: cleaned === '' ? 0 : Number(cleaned) });
+                }}
                 className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-800"
               />
             </div>
@@ -1977,10 +2022,13 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                   type="number"
                   min="0"
                   max="50"
-                  value={editWaterForm.gallonCount}
-                  onChange={(e) => setEditWaterForm({ ...editWaterForm, gallonCount: Number(e.target.value) })}
+                  placeholder="Contoh: 1"
+                  value={editWaterForm.gallonCount === 0 ? '' : editWaterForm.gallonCount}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/^0+/, '');
+                    setEditWaterForm({ ...editWaterForm, gallonCount: cleaned === '' ? 0 : Number(cleaned) });
+                  }}
                   className="w-full p-2 bg-white border border-cyan-300 rounded-lg text-slate-900 font-bold outline-cyan-600"
-                  required
                 />
                 <span className="text-[10px] text-slate-400 mt-1 block">
                   Sebelumnya: {selectedWaterReq.waterDetail?.gallonCount || 1} Galon
@@ -1995,10 +2043,13 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
                   type="number"
                   min="0"
                   max="50"
-                  value={editWaterForm.emptyGallonsReturned}
-                  onChange={(e) => setEditWaterForm({ ...editWaterForm, emptyGallonsReturned: Number(e.target.value) })}
+                  placeholder="Contoh: 1"
+                  value={editWaterForm.emptyGallonsReturned === 0 ? '' : editWaterForm.emptyGallonsReturned}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/^0+/, '');
+                    setEditWaterForm({ ...editWaterForm, emptyGallonsReturned: cleaned === '' ? 0 : Number(cleaned) });
+                  }}
                   className="w-full p-2 bg-white border border-amber-300 rounded-lg text-slate-900 font-bold outline-amber-600"
-                  required
                 />
                 <span className="text-[10px] text-slate-400 mt-1 block">
                   Sebelumnya: {selectedWaterReq.waterDetail?.emptyGallonsReturned ?? 0} Galon

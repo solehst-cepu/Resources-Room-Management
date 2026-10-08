@@ -527,8 +527,12 @@ export const UniformServiceView: React.FC<UniformServiceViewProps> = ({ onOpenRe
                 type="number"
                 min="1"
                 max="10"
-                value={requestForm.quantity}
-                onChange={(e) => setRequestForm({ ...requestForm, quantity: Number(e.target.value) })}
+                placeholder="Contoh: 1"
+                value={requestForm.quantity === 0 ? '' : requestForm.quantity}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/^0+/, '');
+                  setRequestForm({ ...requestForm, quantity: cleaned === '' ? 0 : Number(cleaned) });
+                }}
                 className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-800 outline-teal-600"
                 required
               />

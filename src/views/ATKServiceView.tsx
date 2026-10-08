@@ -76,7 +76,7 @@ export const ATKServiceView: React.FC<ATKServiceViewProps> = ({ onOpenReceipt })
   };
 
   const updateCartQty = (itemId: string, qty: number) => {
-    setCartItems(prev => prev.map(p => p.item.id === itemId ? { ...p, quantity: Math.max(1, qty) } : p));
+    setCartItems(prev => prev.map(p => p.item.id === itemId ? { ...p, quantity: Math.max(0, qty) } : p));
   };
 
   const removeFromCart = (itemId: string) => {
@@ -100,7 +100,7 @@ export const ATKServiceView: React.FC<ATKServiceViewProps> = ({ onOpenReceipt })
       itemName: c.item.name,
       category: c.item.category,
       unitMeasure: c.item.unitMeasure,
-      quantityRequested: c.quantity,
+      quantityRequested: Math.max(1, c.quantity || 1),
       stockAvailable: c.item.stock,
       notes: c.notes
     }));
@@ -386,9 +386,14 @@ export const ATKServiceView: React.FC<ATKServiceViewProps> = ({ onOpenReceipt })
                           type="number"
                           min="1"
                           max={cart.item.stock}
-                          value={cart.quantity}
-                          onChange={(e) => updateCartQty(cart.item.id, Number(e.target.value))}
+                          placeholder="1"
+                          value={cart.quantity === 0 ? '' : cart.quantity}
+                          onChange={(e) => {
+                            const cleaned = e.target.value.replace(/^0+/, '');
+                            updateCartQty(cart.item.id, cleaned === '' ? 0 : Number(cleaned));
+                          }}
                           className="w-14 p-1 text-center font-bold text-slate-800 border border-slate-300 rounded outline-sky-600"
+                          required
                         />
                         <span className="text-[11px] text-slate-500 font-medium">{cart.item.unitMeasure}</span>
                         <button

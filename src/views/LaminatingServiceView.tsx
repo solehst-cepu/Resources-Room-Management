@@ -83,7 +83,7 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
   const [selectedUnit, setSelectedUnit] = useState<string>(currentUser?.unit || 'SMP');
   const [documentType, setDocumentType] = useState<string>('Piagam / Sertifikat Penghargaan');
   const [paperSize, setPaperSize] = useState<'A4' | 'Folio (F4)' | 'A3'>('A4');
-  const [quantity, setQuantity] = useState<number>(10);
+  const [quantity, setQuantity] = useState<number | ''>(10);
   const [deadlineDate, setDeadlineDate] = useState<string>(
     new Date(Date.now() + 86400000).toISOString().slice(0, 16)
   );
@@ -176,7 +176,9 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
 
   // Calculator State
   const [calcSize, setCalcSize] = useState<'A4' | 'Folio (F4)' | 'A3'>('A4');
-  const [calcQty, setCalcQty] = useState<number>(20);
+  const [calcQty, setCalcQty] = useState<number | ''>(20);
+  const numericQuantity = typeof quantity === 'number' ? quantity : (parseInt(String(quantity), 10) || 0);
+  const numericCalcQty = typeof calcQty === 'number' ? calcQty : (parseInt(String(calcQty), 10) || 0);
 
   const laminatingRequests = requests.filter(r => r.serviceType === 'laminating');
 
@@ -210,11 +212,13 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
     e.preventDefault();
     const user = users.find(u => u.id === selectedUserId) || currentUser;
 
+    const finalQuantity = Math.max(1, numericQuantity || 1);
+
     const laminatingDetail: LaminatingDetail = {
       serviceType: 'Laminating',
       documentType,
       paperSize,
-      quantity: Math.max(1, quantity),
+      quantity: finalQuantity,
       deadlineDate,
       photoUrl: photoPreview || undefined,
       fileName: fileName || undefined,
@@ -232,7 +236,7 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
       unit: selectedUnit || user?.unit || 'SMP',
       department: user?.department || 'Akademik',
       urgency,
-      purpose: `${documentType} - ${quantity} Lembar ${paperSize}`,
+      purpose: `${documentType} - ${finalQuantity} Lembar ${paperSize}`,
       notes: notes.trim() || undefined,
       items: [],
       laminatingDetail
@@ -782,8 +786,17 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
                   type="number"
                   min="1"
                   max="500"
+                  placeholder="Contoh: 20"
                   value={calcQty}
-                  onChange={(e) => setCalcQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/^0+/, '');
+                    if (cleaned === '') {
+                      setCalcQty('');
+                    } else {
+                      const parsed = parseInt(cleaned, 10);
+                      setCalcQty(isNaN(parsed) || parsed < 1 ? '' : parsed);
+                    }
+                  }}
                   className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none font-bold text-slate-900"
                 />
               </div>
@@ -805,7 +818,7 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
               <div className="space-y-3.5 text-xs">
                 <div className="flex justify-between pb-2 border-b border-slate-100">
                   <span className="text-slate-600">Total Kebutuhan Pouch:</span>
-                  <strong className="text-slate-900 font-bold">{calcQty} Pouch ({calcSize})</strong>
+                  <strong className="text-slate-900 font-bold">{numericCalcQty} Pouch ({calcSize})</strong>
                 </div>
 
                 <div className="flex justify-between pb-2 border-b border-slate-100">
@@ -816,7 +829,7 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
                 <div className="p-3.5 bg-slate-900 text-white rounded-xl mt-4">
                   <div className="text-[11px] text-slate-300">Perkiraan Durasi Pengerjaan:</div>
                   <div className="text-2xl font-black mt-1 text-teal-400">
-                    ± {getEstimatedMinutes(calcQty, calcSize)} Menit
+                    ± {getEstimatedMinutes(numericCalcQty, calcSize)} Menit
                   </div>
                   <div className="text-[10px] text-slate-400 mt-1">Termasuk waktu pemanasan mesin &amp; pendinginan</div>
                 </div>
@@ -826,7 +839,7 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
             <button
               onClick={() => {
                 setPaperSize(calcSize);
-                setQuantity(calcQty);
+                setQuantity(numericCalcQty > 0 ? numericCalcQty : 1);
                 setIsModalOpen(true);
               }}
               className="mt-4 w-full py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg transition-all text-center cursor-pointer"
@@ -1023,13 +1036,22 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
                   type="number"
                   min="1"
                   max="1000"
+                  placeholder="Contoh: 10"
                   value={quantity}
-                  onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/^0+/, '');
+                    if (cleaned === '') {
+                      setQuantity('');
+                    } else {
+                      const parsed = parseInt(cleaned, 10);
+                      setQuantity(isNaN(parsed) || parsed < 1 ? '' : parsed);
+                    }
+                  }}
                   className="w-full p-2.5 bg-white border border-teal-300 rounded-lg text-slate-900 font-bold focus:border-teal-600 focus:outline-hidden text-lg text-center"
                   required
                 />
                 <span className="text-[10px] text-teal-800 font-semibold mt-0.5 block text-center">
-                  Total Volume: {quantity} Lembar
+                  Total Volume: {numericQuantity} Lembar
                 </span>
               </div>
             </div>

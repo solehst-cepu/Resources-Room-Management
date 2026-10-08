@@ -783,20 +783,26 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialSubtab = 'b
               <label className="block font-bold text-slate-700 mb-1">Stok Awal</label>
               <input
                 type="number"
-                value={itemForm.stock}
-                onChange={(e) => setItemForm({ ...itemForm, stock: Number(e.target.value) })}
+                placeholder="0"
+                value={itemForm.stock === 0 ? '' : itemForm.stock}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/^0+/, '');
+                  setItemForm({ ...itemForm, stock: cleaned === '' ? 0 : Number(cleaned) });
+                }}
                 className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-800"
-                required
               />
             </div>
             <div>
               <label className="block font-bold text-slate-700 mb-1">Min. Stok (Alert)</label>
               <input
                 type="number"
-                value={itemForm.minStock}
-                onChange={(e) => setItemForm({ ...itemForm, minStock: Number(e.target.value) })}
+                placeholder="Contoh: 5"
+                value={itemForm.minStock === 0 ? '' : itemForm.minStock}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/^0+/, '');
+                  setItemForm({ ...itemForm, minStock: cleaned === '' ? 0 : Number(cleaned) });
+                }}
                 className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-800"
-                required
               />
             </div>
           </div>
@@ -816,8 +822,12 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialSubtab = 'b
               <label className="block font-bold text-slate-700 mb-1">Harga Satuan (Rp)</label>
               <input
                 type="number"
-                value={itemForm.price}
-                onChange={(e) => setItemForm({ ...itemForm, price: Number(e.target.value) })}
+                placeholder="0"
+                value={itemForm.price === 0 ? '' : itemForm.price}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/^0+/, '');
+                  setItemForm({ ...itemForm, price: cleaned === '' ? 0 : Number(cleaned) });
+                }}
                 className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800"
               />
             </div>
@@ -883,8 +893,12 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialSubtab = 'b
               <input
                 type="number"
                 min="1"
-                value={stockInForm.quantity}
-                onChange={(e) => setStockInForm({ ...stockInForm, quantity: Number(e.target.value) })}
+                placeholder="Contoh: 10"
+                value={stockInForm.quantity === 0 ? '' : stockInForm.quantity}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/^0+/, '');
+                  setStockInForm({ ...stockInForm, quantity: cleaned === '' ? 0 : Number(cleaned) });
+                }}
                 className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 font-bold"
                 required
               />
@@ -975,8 +989,12 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialSubtab = 'b
               <input
                 type="number"
                 min="1"
-                value={stockOutForm.quantity}
-                onChange={(e) => setStockOutForm({ ...stockOutForm, quantity: Number(e.target.value) })}
+                placeholder="Contoh: 5"
+                value={stockOutForm.quantity === 0 ? '' : stockOutForm.quantity}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/^0+/, '');
+                  setStockOutForm({ ...stockOutForm, quantity: cleaned === '' ? 0 : Number(cleaned) });
+                }}
                 className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 font-bold"
                 required
               />
@@ -1085,10 +1103,13 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialSubtab = 'b
                   <input
                     type="number"
                     min="0"
-                    value={opnameForm.physicalCount}
-                    onChange={(e) => setOpnameForm({ ...opnameForm, physicalCount: Number(e.target.value) })}
+                    placeholder="0"
+                    value={opnameForm.physicalCount === 0 ? '' : opnameForm.physicalCount}
+                    onChange={(e) => {
+                      const cleaned = e.target.value.replace(/^0+/, '');
+                      setOpnameForm({ ...opnameForm, physicalCount: cleaned === '' ? 0 : Number(cleaned) });
+                    }}
                     className="w-full p-2 bg-white border border-blue-400 rounded text-slate-900 font-black text-sm"
-                    required
                   />
                 </div>
 
