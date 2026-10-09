@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { ServiceRequest, RequestStatus, ServiceType } from '../types';
+import { ServiceRequest, RequestStatus, ServiceType, VehicleOrderDetail, VehicleOwnershipType, RentalPaymentStatus, VehicleRentalChecklist } from '../types';
 import { 
   ClipboardList, 
   Search, 
@@ -21,7 +21,8 @@ import {
   Trash2,
   AlertTriangle,
   Compass,
-  Mail
+  Mail,
+  Car
 } from 'lucide-react';
 import { StatusBadge, UrgencyBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -42,6 +43,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
     currentUser, 
     requests, 
     units, 
+    vehicleFleet,
     updateRequestStatus, 
     deleteRequest,
     sendOrderCompletionEmailReport 
@@ -57,12 +59,29 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
   const [activeDetailRequest, setActiveDetailRequest] = useState<ServiceRequest | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  // Action Status Modal (for Operator RR)
+  // Action Status Modal (for Operator RR / Admin)
   const [selectedActionRequest, setSelectedActionRequest] = useState<ServiceRequest | null>(null);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [actionPickedUpBy, setActionPickedUpBy] = useState('');
   const [isRejecting, setIsRejecting] = useState(false);
   const [rejectionReasonText, setRejectionReasonText] = useState('');
+
+  // Admin/Staff Confirmation Fields for Vehicle Order: Jenis Kendaraan & Driver
+  const [assignFleetId, setAssignFleetId] = useState<string>('');
+  const [assignVehicleName, setAssignVehicleName] = useState<string>('');
+  const [assignPlateNumber, setAssignPlateNumber] = useState<string>('');
+  const [assignOwnershipType, setAssignOwnershipType] = useState<VehicleOwnershipType>('Milik Sekolah');
+  const [assignVendorName, setAssignVendorName] = useState<string>('Inventaris Yayasan Lazuardi');
+  const [assignRentalPrice, setAssignRentalPrice] = useState<number | ''>(0);
+  const [assignRentalPeriod, setAssignRentalPeriod] = useState<string>('Inventaris Sekolah');
+  const [assignDriverOption, setAssignDriverOption] = useState<string>('Dengan Sopir (Driver Sekolah)');
+  const [assignDriverName, setAssignDriverName] = useState<string>('');
+
+  // Ceklist khusus Bus / Kendaraan Sewa pada proses "Siapkan Armada dan Driver"
+  const [checkKeepOrder, setCheckKeepOrder] = useState<boolean>(false);
+  const [checkDpSewa, setCheckDpSewa] = useState<boolean>(false);
+  const [checkLunas, setCheckLunas] = useState<boolean>(false);
+  const [checkArmadaPrepared, setCheckArmadaPrepared] = useState<boolean>(false);
 
   // Delete Confirmation Modal (for Admin & Super Admin)
   const [requestToDelete, setRequestToDelete] = useState<ServiceRequest | null>(null);
@@ -83,7 +102,129 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
     setActionPickedUpBy(req.pickedUpBy || req.userName || '');
     setIsRejecting(false);
     setRejectionReasonText('');
+
+    if (req.serviceType === 'kendaraan') {
+      const vd = req.vehicleDetail;
+      const rc = vd?.rentalChecklist;
+      setCheckKeepOrder(Boolean(rc?.keepOrder));
+      setCheckDpSewa(Boolean(rc?.dpSewa));
+      setCheckLunas(Boolean(rc?.lunas));
+      setCheckArmadaPrepared(Boolean(rc?.armadaPrepared || req.status === 'Sedang Disiapkan' || req.status === 'Siap Diambil' || req.status === 'Selesai'));
+
+      const isUnassigned =
+        !vd?.vehicleName ||
+        vd.vehicleName === 'Menunggu Penentuan Admin' ||
+        vd.plateNumber === 'Belum Ditentukan';
+
+      if (isUnassigned) {
+        const catFleet = vehicleFleet.filter(f => f.category === (vd?.vehicleCategory || 'Kendaraan Operasional'));
+        const defaultUnit = catFleet.find(f => f.status === 'Tersedia') || catFleet[0];
+        if (defaultUnit) {
+          setAssignFleetId(defaultUnit.id);
+          setAssignVehicleName(defaultUnit.name);
+          setAssignPlateNumber(defaultUnit.plateNumber);
+          setAssignOwnershipType(defaultUnit.ownershipType || 'Milik Sekolah');
+          setAssignVendorName(defaultUnit.vendorName || 'Inventaris Yayasan Lazuardi');
+          setAssignRentalPrice(defaultUnit.rentalPrice ?? 0);
+          setAssignRentalPeriod(defaultUnit.rentalPeriod || 'Inventaris Sekolah');
+          setAssignDriverOption('Dengan Sopir (Driver Sekolah)');
+          setAssignDriverName(defaultUnit.driverName);
+        } else {
+          setAssignFleetId('');
+          setAssignVehicleName('');
+          setAssignPlateNumber('');
+          setAssignOwnershipType('Milik Sekolah');
+          setAssignVendorName('Inventaris Yayasan Lazuardi');
+          setAssignRentalPrice(0);
+          setAssignRentalPeriod('Inventaris Sekolah');
+          setAssignDriverOption('Dengan Sopir (Driver Sekolah)');
+          setAssignDriverName('');
+        }
+      } else {
+        setAssignFleetId(vd?.vehicleId || '');
+        setAssignVehicleName(vd?.vehicleName || '');
+        setAssignPlateNumber(vd?.plateNumber || '');
+        setAssignOwnershipType(vd?.ownershipType || 'Milik Sekolah');
+        setAssignVendorName(vd?.vendorName || 'Inventaris Yayasan Lazuardi');
+        setAssignRentalPrice(vd?.rentalPrice ?? 0);
+        setAssignRentalPeriod(vd?.rentalPeriod || 'Inventaris Sekolah');
+        setAssignDriverOption(
+          vd?.driverOption && vd.driverOption !== 'Ditentukan Admin / Staff'
+            ? vd.driverOption
+            : 'Dengan Sopir (Driver Sekolah)'
+        );
+        setAssignDriverName(
+          vd?.driverName && vd.driverName !== 'Menunggu Konfirmasi Admin'
+            ? vd.driverName
+            : ''
+        );
+      }
+    }
+
     setIsActionModalOpen(true);
+  };
+
+  const handleAdminSelectFleetUnit = (fleetId: string) => {
+    setAssignFleetId(fleetId);
+    const found = vehicleFleet.find(f => f.id === fleetId);
+    if (found) {
+      setAssignVehicleName(found.name);
+      setAssignPlateNumber(found.plateNumber);
+      setAssignOwnershipType(found.ownershipType || 'Milik Sekolah');
+      setAssignVendorName(found.vendorName || 'Inventaris Yayasan Lazuardi');
+      setAssignRentalPrice(found.rentalPrice ?? 0);
+      setAssignRentalPeriod(found.rentalPeriod || 'Inventaris Sekolah');
+      setAssignDriverName(found.driverName);
+    }
+  };
+
+  const buildAssignedVehicleDetail = (req: ServiceRequest, markArmadaPrepared?: boolean): VehicleOrderDetail | undefined => {
+    if (req.serviceType !== 'kendaraan' || !req.vehicleDetail) return undefined;
+    const finalVehName = assignVehicleName.trim() || req.vehicleDetail.vehicleName || 'Armada Sekolah';
+    const finalPlate = assignPlateNumber.trim() || req.vehicleDetail.plateNumber || '-';
+    const finalDriver =
+      assignDriverOption === 'Lepas Kunci (Mengemudi Sendiri)'
+        ? (actionPickedUpBy.trim() || req.userName || 'Mengemudi Sendiri')
+        : (assignDriverName.trim() || req.vehicleDetail.driverName || 'Driver Sekolah');
+    const unitPrice = Math.max(0, Number(assignRentalPrice) || 0);
+    const unitCount = Math.max(1, req.vehicleDetail.vehicleCount || 1);
+
+    const existingChecklist = req.vehicleDetail.rentalChecklist;
+    const nowIso = new Date().toISOString();
+    const isPrepared = markArmadaPrepared ? true : (checkArmadaPrepared || Boolean(existingChecklist?.armadaPrepared));
+    const rentalChecklist: VehicleRentalChecklist = {
+      keepOrder: checkKeepOrder,
+      keepOrderDate: checkKeepOrder ? (existingChecklist?.keepOrderDate || nowIso) : undefined,
+      dpSewa: checkDpSewa,
+      dpSewaDate: checkDpSewa ? (existingChecklist?.dpSewaDate || nowIso) : undefined,
+      lunas: checkLunas,
+      lunasDate: checkLunas ? (existingChecklist?.lunasDate || nowIso) : undefined,
+      armadaPrepared: isPrepared,
+      armadaPreparedDate: isPrepared ? (existingChecklist?.armadaPreparedDate || nowIso) : undefined
+    };
+    const rentalPaymentStatus: RentalPaymentStatus = checkLunas
+      ? 'Lunas'
+      : checkDpSewa
+      ? 'DP Sewa'
+      : checkKeepOrder
+      ? 'Keep Order'
+      : 'Belum Keep Order';
+
+    return {
+      ...req.vehicleDetail,
+      vehicleId: assignFleetId || req.vehicleDetail.vehicleId,
+      vehicleName: finalVehName,
+      plateNumber: finalPlate,
+      ownershipType: assignOwnershipType,
+      vendorName: assignVendorName,
+      rentalPrice: unitPrice,
+      rentalPeriod: assignRentalPeriod,
+      totalRentalCost: unitPrice * unitCount,
+      rentalChecklist,
+      rentalPaymentStatus,
+      driverOption: assignDriverOption,
+      driverName: finalDriver
+    };
   };
 
   const handleOpenDeleteConfirm = (req: ServiceRequest) => {
@@ -166,6 +307,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
       case 'fotocopy': return <Printer className="w-3.5 h-3.5 text-purple-600" />;
       case 'laminating': return <Sparkles className="w-3.5 h-3.5 text-teal-600" />;
       case 'air_galon': return <Droplet className="w-3.5 h-3.5 text-cyan-600" />;
+      case 'kendaraan': return <Car className="w-3.5 h-3.5 text-indigo-600" />;
     }
   };
 
@@ -221,6 +363,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
               <option value="fotocopy">Layanan Foto Copy</option>
               <option value="laminating">Pelayanan Laminating</option>
               <option value="air_galon">Air Minum Galon</option>
+              <option value="kendaraan">Kendaraan Operasional &amp; Bus</option>
             </select>
 
             <select
@@ -345,6 +488,15 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                           {req.waterDetail.gallonCount} Galon @ {req.waterDetail.roomName}
                         </span>
                       )}
+                      {req.vehicleDetail && (
+                        <span className="text-[11px] text-indigo-700 font-semibold">
+                          {req.vehicleDetail.vehicleCategory}:{' '}
+                          {(!req.vehicleDetail.vehicleName || req.vehicleDetail.vehicleName === 'Menunggu Penentuan Admin')
+                            ? `Menunggu Konfirmasi Admin (${req.vehicleDetail.vehicleCount || 1} Unit)`
+                            : `${req.vehicleDetail.vehicleName} (${req.vehicleDetail.plateNumber})`}{' '}
+                          • {req.vehicleDetail.passengerCount} Penumpang
+                        </span>
+                      )}
                     </td>
                     <td className="p-3.5">
                       <UrgencyBadge urgency={req.urgency} />
@@ -353,8 +505,8 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                       <StatusBadge status={req.status} />
                     </td>
                     <td className="p-3.5 text-right space-x-1.5 whitespace-nowrap">
-                      {/* Lacak Button for Photocopy & Laminating */}
-                      {(req.serviceType === 'fotocopy' || req.serviceType === 'laminating') && (
+                      {/* Lacak Button for Photocopy, Laminating & Kendaraan */}
+                      {(req.serviceType === 'fotocopy' || req.serviceType === 'laminating' || req.serviceType === 'kendaraan') && (
                         <button
                           onClick={() => {
                             setTrackingRequest(req);
@@ -562,6 +714,66 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
               </div>
             )}
 
+            {/* Vehicle Order Details */}
+            {activeDetailRequest.vehicleDetail && (
+              <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-200 text-slate-800 space-y-1">
+                <span className="font-bold text-indigo-950 block">
+                  Rincian Order {activeDetailRequest.vehicleDetail.vehicleCategory}:
+                </span>
+                <p>
+                  Armada: <strong>{activeDetailRequest.vehicleDetail.vehicleName}</strong> • Nopol:{' '}
+                  <strong className="font-mono">{activeDetailRequest.vehicleDetail.plateNumber}</strong> ({activeDetailRequest.vehicleDetail.vehicleCount || 1} Unit)
+                </p>
+                <p>
+                  Tujuan: <strong>{activeDetailRequest.vehicleDetail.destination}</strong> • Titik Jemput:{' '}
+                  <strong>{activeDetailRequest.vehicleDetail.pickupPoint}</strong>
+                </p>
+                <p>
+                  Keberangkatan: <strong>{new Date(activeDetailRequest.vehicleDetail.departureTime).toLocaleString('id-ID')}</strong> s/d{' '}
+                  <strong>{new Date(activeDetailRequest.vehicleDetail.returnTime).toLocaleString('id-ID')}</strong>
+                </p>
+                <p>
+                  Jumlah Penumpang: <strong>{activeDetailRequest.vehicleDetail.passengerCount} Orang</strong> • Pengemudi:{' '}
+                  <strong>{activeDetailRequest.vehicleDetail.driverOption} ({activeDetailRequest.vehicleDetail.driverName || 'Driver Sekolah'})</strong>
+                </p>
+                {(activeDetailRequest.vehicleDetail.vehicleCategory === 'Kendaraan Bus' ||
+                  activeDetailRequest.vehicleDetail.ownershipType === 'Sewa / Vendor' ||
+                  (activeDetailRequest.vehicleDetail.rentalPrice && activeDetailRequest.vehicleDetail.rentalPrice > 0)) && (
+                  <div className="pt-1.5 mt-1.5 border-t border-indigo-200/70 flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-[11px] font-bold text-indigo-950">
+                      Ceklist Siapkan Armada &amp; Driver:
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                        activeDetailRequest.vehicleDetail.rentalChecklist?.keepOrder
+                          ? 'bg-amber-100 text-amber-900 border-amber-300'
+                          : 'bg-white text-slate-400 border-slate-200'
+                      }`}>
+                        {activeDetailRequest.vehicleDetail.rentalChecklist?.keepOrder ? '✓ ' : ''}Keep Order
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                        activeDetailRequest.vehicleDetail.rentalChecklist?.dpSewa
+                          ? 'bg-blue-100 text-blue-900 border-blue-300'
+                          : 'bg-white text-slate-400 border-slate-200'
+                      }`}>
+                        {activeDetailRequest.vehicleDetail.rentalChecklist?.dpSewa ? '✓ ' : ''}DP Sewa
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                        activeDetailRequest.vehicleDetail.rentalChecklist?.lunas
+                          ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                          : 'bg-white text-slate-400 border-slate-200'
+                      }`}>
+                        {activeDetailRequest.vehicleDetail.rentalChecklist?.lunas ? '✓ ' : ''}Lunas
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {activeDetailRequest.vehicleDetail.notes && (
+                  <p>Catatan: <span className="italic text-slate-600">"{activeDetailRequest.vehicleDetail.notes}"</span></p>
+                )}
+              </div>
+            )}
+
             {/* Handover & Admin Notes */}
             {(activeDetailRequest.adminNotes || activeDetailRequest.pickedUpBy || activeDetailRequest.rejectionReason) && (
               <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1 text-[11px]">
@@ -705,9 +917,253 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                   Air Galon: {selectedActionRequest.waterDetail.gallonCount} Galon @ {selectedActionRequest.waterDetail.roomName}
                 </p>
               )}
+              {selectedActionRequest.vehicleDetail && (
+                <p className="text-indigo-700 font-semibold">
+                  {selectedActionRequest.vehicleDetail.vehicleCategory}: {selectedActionRequest.vehicleDetail.vehicleCount || 1} Unit ({selectedActionRequest.vehicleDetail.passengerCount || 1} Penumpang) • Tujuan: {selectedActionRequest.vehicleDetail.destination}
+                </p>
+              )}
             </div>
 
+            {/* MENU KONFIRMASI JENIS KENDARAAN & DRIVER OLEH ADMIN / STAFF */}
+            {selectedActionRequest.serviceType === 'kendaraan' && (
+              <div className="p-3.5 bg-blue-50/70 rounded-xl border border-blue-200 space-y-2.5">
+                <div className="flex items-center justify-between border-b border-blue-200/80 pb-1.5">
+                  <span className="font-extrabold text-blue-950 text-xs flex items-center gap-1.5">
+                    <Car className="w-3.5 h-3.5 text-blue-700" />
+                    <span>Penentuan Jenis Kendaraan &amp; Driver (Admin / Staff)</span>
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-bold text-[10px]">
+                    Konfirmasi Order
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Pilih dari Katalog Armada Sekolah atau Armada Sewa (Otomatis Isi Kendaraan, Driver &amp; Harga Sewa):
+                  </label>
+                  <select
+                    value={assignFleetId}
+                    onChange={(e) => handleAdminSelectFleetUnit(e.target.value)}
+                    className="w-full text-xs px-2.5 py-1.5 bg-white border border-blue-300 rounded-md font-bold text-slate-900"
+                  >
+                    <option value="">-- Pilih Unit Armada Sekolah / Bus Siap Sewa --</option>
+                    {vehicleFleet
+                      .filter(f => !selectedActionRequest.vehicleDetail?.vehicleCategory || f.category === selectedActionRequest.vehicleDetail.vehicleCategory)
+                      .map(f => (
+                        <option key={f.id} value={f.id}>
+                          [{f.ownershipType === 'Sewa / Vendor' ? `SEWA Rp ${(f.rentalPrice || 0).toLocaleString('id-ID')}` : 'MILIK SEKOLAH'}] {f.name} ({f.plateNumber}) — {f.capacity} Seat • Driver: {f.driverName}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Harga Sewa per Unit (Rp)
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="0"
+                      value={assignRentalPrice}
+                      onChange={(e) => {
+                        const cleaned = e.target.value.replace(/^0+/, '');
+                        const parsed = cleaned === '' ? '' : parseInt(cleaned, 10);
+                        setAssignRentalPrice(parsed);
+                        if (Number(parsed) > 0 && assignOwnershipType === 'Milik Sekolah') {
+                          setAssignOwnershipType('Sewa / Vendor');
+                        }
+                      }}
+                      className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-mono font-bold text-emerald-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Kepemilikan / Penyedia
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <select
+                        value={assignOwnershipType}
+                        onChange={(e) => {
+                          const val = e.target.value as VehicleOwnershipType;
+                          setAssignOwnershipType(val);
+                          if (val === 'Milik Sekolah') {
+                            setAssignRentalPrice(0);
+                            setAssignVendorName('Inventaris Yayasan Lazuardi');
+                          } else if (assignVendorName === 'Inventaris Yayasan Lazuardi') {
+                            setAssignVendorName('PO Mitra Pariwisata Lazuardi');
+                          }
+                        }}
+                        className="px-2 py-1.5 bg-white border border-slate-300 rounded-md font-bold text-slate-800 text-xs"
+                      >
+                        <option value="Milik Sekolah">Milik Sekolah</option>
+                        <option value="Sewa / Vendor">Sewa / Vendor</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={assignVendorName}
+                        onChange={(e) => setAssignVendorName(e.target.value)}
+                        placeholder="Nama PO / Penyedia..."
+                        className="w-full text-xs px-2 py-1.5 bg-white border border-slate-300 rounded-md font-semibold text-slate-700"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Jenis / Nama Kendaraan <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={assignVehicleName}
+                      onChange={(e) => setAssignVehicleName(e.target.value)}
+                      placeholder="Contoh: Innova Zenix / Bus Medium..."
+                      className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-bold text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Nomor Polisi (Plat) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={assignPlateNumber}
+                      onChange={(e) => setAssignPlateNumber(e.target.value.toUpperCase())}
+                      placeholder="B 1428 LZR"
+                      className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-mono font-bold text-slate-900 uppercase"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Layanan Pengemudi
+                    </label>
+                    <select
+                      value={assignDriverOption}
+                      onChange={(e) => setAssignDriverOption(e.target.value)}
+                      className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-semibold text-slate-800"
+                    >
+                      <option value="Dengan Sopir (Driver Sekolah)">Dengan Sopir (Driver Sekolah)</option>
+                      <option value="Lepas Kunci (Mengemudi Sendiri)">Lepas Kunci (Mengemudi Sendiri)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Nama Driver yang Ditugaskan <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={assignDriverName}
+                      onChange={(e) => setAssignDriverName(e.target.value)}
+                      placeholder="Nama Driver..."
+                      className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-bold text-slate-900"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-3">
+              {/* KHUSUS KENDARAAN BUS ATAU KENDARAAN YANG DISEWA: CEKLIST "SIAPKAN ARMADA DAN DRIVER" */}
+              {selectedActionRequest.serviceType === 'kendaraan' &&
+                (selectedActionRequest.vehicleDetail?.vehicleCategory === 'Kendaraan Bus' ||
+                  assignOwnershipType === 'Sewa / Vendor' ||
+                  Number(assignRentalPrice) > 0) && (
+                  <div className="p-3 bg-amber-50/80 border border-amber-300 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between flex-wrap gap-1.5 border-b border-amber-200/80 pb-1.5">
+                      <span className="font-extrabold text-amber-950 text-[11px] flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Ceklist "Siapkan Armada dan Driver" (Bus / Sewa)</span>
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${
+                        checkLunas
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          : checkDpSewa
+                          ? 'bg-blue-100 text-blue-800 border-blue-300'
+                          : checkKeepOrder
+                          ? 'bg-amber-200/80 text-amber-950 border-amber-400'
+                          : 'bg-white text-slate-600 border-slate-300'
+                      }`}>
+                        {checkLunas
+                          ? '✓ LUNAS'
+                          : checkDpSewa
+                          ? '✓ DP SEWA'
+                          : checkKeepOrder
+                          ? '✓ KEEP ORDER'
+                          : 'Belum Keep Order'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setCheckKeepOrder(!checkKeepOrder)}
+                        className={`flex items-center gap-1.5 p-2 rounded-lg border text-left cursor-pointer transition-all ${
+                          checkKeepOrder
+                            ? 'bg-amber-600 text-white border-amber-700'
+                            : 'bg-white hover:bg-amber-100/50 text-slate-800 border-amber-200'
+                        }`}
+                      >
+                        <div className={`w-3.5 h-3.5 rounded flex items-center justify-center shrink-0 border ${
+                          checkKeepOrder ? 'bg-white text-amber-700 border-white' : 'bg-slate-50 border-slate-300 text-transparent'
+                        }`}>
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        </div>
+                        <span className="font-extrabold text-[11px]">Keep Order</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !checkDpSewa;
+                          setCheckDpSewa(next);
+                          if (next && !checkKeepOrder) setCheckKeepOrder(true);
+                        }}
+                        className={`flex items-center gap-1.5 p-2 rounded-lg border text-left cursor-pointer transition-all ${
+                          checkDpSewa
+                            ? 'bg-blue-600 text-white border-blue-700'
+                            : 'bg-white hover:bg-blue-50 text-slate-800 border-amber-200'
+                        }`}
+                      >
+                        <div className={`w-3.5 h-3.5 rounded flex items-center justify-center shrink-0 border ${
+                          checkDpSewa ? 'bg-white text-blue-700 border-white' : 'bg-slate-50 border-slate-300 text-transparent'
+                        }`}>
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        </div>
+                        <span className="font-extrabold text-[11px]">DP Sewa</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !checkLunas;
+                          setCheckLunas(next);
+                          if (next) {
+                            if (!checkKeepOrder) setCheckKeepOrder(true);
+                            if (!checkDpSewa) setCheckDpSewa(true);
+                          }
+                        }}
+                        className={`flex items-center gap-1.5 p-2 rounded-lg border text-left cursor-pointer transition-all ${
+                          checkLunas
+                            ? 'bg-emerald-600 text-white border-emerald-700'
+                            : 'bg-white hover:bg-emerald-50 text-slate-800 border-amber-200'
+                        }`}
+                      >
+                        <div className={`w-3.5 h-3.5 rounded flex items-center justify-center shrink-0 border ${
+                          checkLunas ? 'bg-white text-emerald-700 border-white' : 'bg-slate-50 border-slate-300 text-transparent'
+                        }`}>
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        </div>
+                        <span className="font-extrabold text-[11px]">Lunas</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
               <label className="block text-xs font-bold text-slate-700">Perbarui Alur Status Pengerjaan (Operator RR):</label>
 
               {/* Receiver name input for completion */}
@@ -731,7 +1187,13 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    updateRequestStatus(selectedActionRequest.id, 'Disetujui', { adminNotes: 'Disetujui operator Resources Room' });
+                    const updatedVd = buildAssignedVehicleDetail(selectedActionRequest, false);
+                    updateRequestStatus(selectedActionRequest.id, 'Disetujui', {
+                      vehicleDetail: updatedVd,
+                      adminNotes: updatedVd
+                        ? `Order kendaraan dikonfirmasi: ${updatedVd.vehicleName} (${updatedVd.plateNumber}) • Driver: ${updatedVd.driverName}`
+                        : 'Disetujui operator Resources Room'
+                    });
                     setIsActionModalOpen(false);
                   }}
                   className={`p-2.5 rounded-lg border text-left text-xs font-semibold cursor-pointer transition-colors ${
@@ -740,15 +1202,26 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                 >
                   <div className="flex items-center gap-1.5 font-bold mb-0.5">
                     <Check className="w-3.5 h-3.5 text-blue-500" />
-                    <span>1. Setujui Order</span>
+                    <span>1. Konfirmasi &amp; Setujui</span>
                   </div>
-                  <span className="text-[10px] opacity-80 block">Disetujui operator RR</span>
+                  <span className="text-[10px] opacity-80 block">Simpan konfirmasi Admin/RR</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
-                    updateRequestStatus(selectedActionRequest.id, 'Sedang Disiapkan', { adminNotes: 'Sedang dikerjakan / disiapkan operator RR' });
+                    const updatedVd = buildAssignedVehicleDetail(selectedActionRequest, true);
+                    const checklistSummary = [
+                      checkKeepOrder ? 'Keep Order' : null,
+                      checkDpSewa ? 'DP Sewa' : null,
+                      checkLunas ? 'Lunas' : null
+                    ].filter(Boolean).join(' • ');
+                    updateRequestStatus(selectedActionRequest.id, 'Sedang Disiapkan', {
+                      vehicleDetail: updatedVd,
+                      adminNotes: updatedVd
+                        ? `Siapkan Armada & Driver${checklistSummary ? ` [${checklistSummary}]` : ''}: ${updatedVd.vehicleName} (${updatedVd.plateNumber}) & Driver ${updatedVd.driverName}`
+                        : 'Sedang dikerjakan / disiapkan operator RR'
+                    });
                     setIsActionModalOpen(false);
                   }}
                   className={`p-2.5 rounded-lg border text-left text-xs font-semibold cursor-pointer transition-colors ${
@@ -757,15 +1230,32 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                 >
                   <div className="flex items-center gap-1.5 font-bold mb-0.5">
                     <Clock className="w-3.5 h-3.5 text-amber-500" />
-                    <span>2. Sedang Diproses</span>
+                    <span>{selectedActionRequest.serviceType === 'kendaraan' ? '2. Siapkan Armada & Driver' : '2. Sedang Diproses'}</span>
                   </div>
-                  <span className="text-[10px] opacity-80 block">Pengerjaan di mesin/gudang</span>
+                  <span className="text-[10px] opacity-80 block">
+                    {selectedActionRequest.serviceType === 'kendaraan' &&
+                    (selectedActionRequest.vehicleDetail?.vehicleCategory === 'Kendaraan Bus' ||
+                      assignOwnershipType === 'Sewa / Vendor' ||
+                      Number(assignRentalPrice) > 0)
+                      ? ([
+                          checkKeepOrder ? '✓ Keep Order' : null,
+                          checkDpSewa ? '✓ DP Sewa' : null,
+                          checkLunas ? '✓ Lunas' : null
+                        ].filter(Boolean).join(' • ') || 'Keep Order / DP Sewa / Lunas')
+                      : 'Pengerjaan / penyiapan'}
+                  </span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
-                    updateRequestStatus(selectedActionRequest.id, 'Siap Diambil', { adminNotes: 'Selesai dan siap diambil di loket Resources Room' });
+                    const updatedVd = buildAssignedVehicleDetail(selectedActionRequest);
+                    updateRequestStatus(selectedActionRequest.id, 'Siap Diambil', {
+                      vehicleDetail: updatedVd,
+                      adminNotes: updatedVd
+                        ? `Armada ${updatedVd.vehicleName} (${updatedVd.plateNumber}) bersama Driver ${updatedVd.driverName} sudah standby`
+                        : 'Selesai dan siap diambil di loket Resources Room'
+                    });
                     setIsActionModalOpen(false);
                   }}
                   className={`p-2.5 rounded-lg border text-left text-xs font-semibold cursor-pointer transition-colors ${
@@ -774,20 +1264,25 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                 >
                   <div className="flex items-center gap-1.5 font-bold mb-0.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-cyan-500" />
-                    <span>3. Siap Diambil</span>
+                    <span>3. Siap / Standby</span>
                   </div>
-                  <span className="text-[10px] opacity-80 block">Tersedia di loket RR</span>
+                  <span className="text-[10px] opacity-80 block">Tersedia di loket / standby</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
                     const recipient = actionPickedUpBy.trim() || selectedActionRequest.userName || 'Pemohon';
-                    updateRequestStatus(selectedActionRequest.id, 'Selesai', { pickedUpBy: recipient });
+                    const updatedVd = buildAssignedVehicleDetail(selectedActionRequest);
+                    updateRequestStatus(selectedActionRequest.id, 'Selesai', {
+                      pickedUpBy: recipient,
+                      vehicleDetail: updatedVd
+                    });
                     setIsActionModalOpen(false);
                     // Automatically open the email report modal for review and dispatch
                     setEmailModalRequest({
                       ...selectedActionRequest,
+                      vehicleDetail: updatedVd || selectedActionRequest.vehicleDetail,
                       status: 'Selesai',
                       pickedUpBy: recipient,
                       completedDate: new Date().toISOString()

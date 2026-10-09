@@ -1,5 +1,5 @@
 import React from 'react';
-import { Printer, Sparkles, Droplet, ArrowRight } from 'lucide-react';
+import { Printer, Sparkles, Droplet, Car, Bus, ArrowRight } from 'lucide-react';
 import { Modal } from './Modal';
 
 interface QuickRequestModalProps {
@@ -19,11 +19,11 @@ export const QuickRequestModal: React.FC<QuickRequestModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Pusat Layanan Resources Room"
-      subtitle="Pilih kategori permohonan yang ingin Anda ajukan hari ini"
-      maxWidth="lg"
+      title="Pusat Layanan & Order Resources Room"
+      subtitle="Pilih kategori permohonan layanan atau pemesanan kendaraan yang ingin Anda ajukan"
+      maxWidth="2xl"
     >
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 text-left">
         
         {/* Foto Copy */}
         <button
@@ -84,6 +84,48 @@ export const QuickRequestModal: React.FC<QuickRequestModalProps> = ({
           </div>
           <div className="mt-3 flex items-center gap-1.5 text-xs font-bold text-cyan-600">
             <span>Buka Formulir</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </div>
+        </button>
+
+        {/* Kendaraan Operasional */}
+        <button
+          onClick={() => {
+            onSelectService('layanan_kendaraan_ops');
+            onClose();
+          }}
+          className="p-4 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/40 transition-all text-left group cursor-pointer shadow-xs flex flex-col justify-between"
+        >
+          <div>
+            <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-lg w-fit group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+              <Car className="w-5 h-5" />
+            </div>
+            <h4 className="text-sm font-bold text-slate-900 mt-2.5">Order Kendaraan Operasional</h4>
+            <p className="text-[11px] text-slate-500 mt-1">Pemesanan mobil operasional (Innova, Avanza, Xpander, Van Logistik) untuk dinas luar &amp; rapat</p>
+          </div>
+          <div className="mt-3 flex items-center gap-1.5 text-xs font-bold text-indigo-600">
+            <span>Pesan Mobil Operasional</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </div>
+        </button>
+
+        {/* Kendaraan Bus Sekolah */}
+        <button
+          onClick={() => {
+            onSelectService('layanan_kendaraan_bus');
+            onClose();
+          }}
+          className="p-4 rounded-xl border border-slate-200 hover:border-amber-500 hover:bg-amber-50/40 transition-all text-left group cursor-pointer shadow-xs flex flex-col justify-between sm:col-span-2 lg:col-span-2"
+        >
+          <div>
+            <div className="p-2.5 bg-amber-50 text-amber-600 rounded-lg w-fit group-hover:bg-amber-600 group-hover:text-white transition-colors">
+              <Bus className="w-5 h-5" />
+            </div>
+            <h4 className="text-sm font-bold text-slate-900 mt-2.5">Order Kendaraan Bus Sekolah</h4>
+            <p className="text-[11px] text-slate-500 mt-1">Pemesanan Medium Bus (31–33 Seat), HiAce Commuter (15 Seat), &amp; Big Bus Pariwisata (50 Seat) untuk Field Trip, Lomba Siswa &amp; Kunjungan Edukasi</p>
+          </div>
+          <div className="mt-3 flex items-center gap-1.5 text-xs font-bold text-amber-600">
+            <span>Pesan Bus Sekolah</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </div>
         </button>

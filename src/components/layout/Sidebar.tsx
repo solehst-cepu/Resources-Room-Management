@@ -18,7 +18,9 @@ import {
   X,
   Sparkles,
   School,
-  LogOut
+  LogOut,
+  Car,
+  Bus
 } from 'lucide-react';
 import { RoleBadge } from '../common/Badge';
 
@@ -172,6 +174,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <span>Penyediaan Air Galon</span>
                   </div>
                 </button>
+
+                <button
+                  onClick={() => handleNavClick('layanan_kendaraan_ops')}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                    currentTab === 'layanan_kendaraan_ops' || currentTab === 'layanan_kendaraan'
+                      ? 'bg-blue-600 text-white shadow-xs font-semibold'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Car className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Kendaraan Operasional</span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => handleNavClick('layanan_kendaraan_bus')}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                    currentTab === 'layanan_kendaraan_bus'
+                      ? 'bg-amber-600 text-white shadow-xs font-semibold'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Bus className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Kendaraan Bus Sekolah</span>
+                  </div>
+                </button>
               </div>
             )}
           </div>
@@ -320,6 +350,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     }`}
                   >
                     <span>Unit &amp; Departemen</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleNavClick('pengaturan_armada')}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      currentTab === 'pengaturan_armada' ? 'bg-blue-600 text-white font-semibold' : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <span>Armada &amp; Sewa Bus</span>
                   </button>
 
                   <button

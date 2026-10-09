@@ -17,7 +17,9 @@ import {
   Layers,
   ChevronRight,
   MapPin,
-  Sparkles
+  Sparkles,
+  Car,
+  Bus
 } from 'lucide-react';
 import { StatsCard } from '../components/common/StatsCard';
 import { StatusBadge, UrgencyBadge } from '../components/common/Badge';
@@ -86,10 +88,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const serviceCounts = {
     fotocopy: requests.filter(r => r.serviceType === 'fotocopy').length,
     laminating: requests.filter(r => r.serviceType === 'laminating').length,
-    air_galon: requests.filter(r => r.serviceType === 'air_galon').length
+    air_galon: requests.filter(r => r.serviceType === 'air_galon').length,
+    kendaraan: requests.filter(r => r.serviceType === 'kendaraan').length
   };
 
-  const activeServicesTotal = (serviceCounts.fotocopy + serviceCounts.laminating + serviceCounts.air_galon) || 1;
+  const activeServicesTotal = (serviceCounts.fotocopy + serviceCounts.laminating + serviceCounts.air_galon + serviceCounts.kendaraan) || 1;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -201,7 +204,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* Quick Launchers for Services */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         <button
           onClick={() => onNavigate('layanan_fotocopy')}
           className="p-4 rounded-xl bg-white border border-slate-200 hover:border-blue-500 hover:shadow-md transition-all text-left group cursor-pointer"
@@ -236,14 +239,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </button>
 
         <button
-          onClick={() => onNavigate('permintaan_all')}
-          className="p-4 rounded-xl bg-white border border-slate-200 hover:border-blue-500 hover:shadow-md transition-all text-left group cursor-pointer"
+          onClick={() => onNavigate('layanan_kendaraan_ops')}
+          className="p-4 rounded-xl bg-white border border-slate-200 hover:border-indigo-500 hover:shadow-md transition-all text-left group cursor-pointer"
         >
-          <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600 w-fit group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-            <ClipboardList className="w-5 h-5" />
+          <div className="p-2.5 rounded-lg bg-indigo-50 text-indigo-600 w-fit group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+            <Car className="w-5 h-5" />
           </div>
-          <h4 className="text-xs font-bold text-slate-800 mt-2.5">Daftar Tiket Permintaan</h4>
-          <p className="text-[11px] text-slate-500 mt-0.5">Pantau status &amp; tanda terima</p>
+          <h4 className="text-xs font-bold text-slate-800 mt-2.5">Kendaraan Operasional</h4>
+          <p className="text-[11px] text-slate-500 mt-0.5">Mobil dinas luar, rapat &amp; logistik</p>
+        </button>
+
+        <button
+          onClick={() => onNavigate('layanan_kendaraan_bus')}
+          className="p-4 rounded-xl bg-white border border-slate-200 hover:border-amber-500 hover:shadow-md transition-all text-left group cursor-pointer"
+        >
+          <div className="p-2.5 rounded-lg bg-amber-50 text-amber-600 w-fit group-hover:bg-amber-600 group-hover:text-white transition-colors">
+            <Bus className="w-5 h-5" />
+          </div>
+          <h4 className="text-xs font-bold text-slate-800 mt-2.5">Kendaraan Bus Sekolah</h4>
+          <p className="text-[11px] text-slate-500 mt-0.5">Bus field trip, lomba &amp; rombongan</p>
         </button>
       </div>
 
@@ -312,6 +326,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
               <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
                 <div className="h-full bg-cyan-500 rounded-full transition-all" style={{ width: `${(serviceCounts.air_galon / activeServicesTotal) * 100}%` }} />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-sm bg-amber-500" />
+                  Order Kendaraan Operasional &amp; Bus Sekolah
+                </span>
+                <span className="font-bold text-slate-800">{serviceCounts.kendaraan} Permintaan ({Math.round((serviceCounts.kendaraan / activeServicesTotal) * 100)}%)</span>
+              </div>
+              <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${(serviceCounts.kendaraan / activeServicesTotal) * 100}%` }} />
               </div>
             </div>
           </div>

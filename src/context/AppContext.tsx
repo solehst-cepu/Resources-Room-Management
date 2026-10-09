@@ -21,7 +21,9 @@ import {
   MasterLocation, 
   ServiceType, 
   RequestStatus,
-  EmailNotificationLog 
+  EmailNotificationLog,
+  VehicleOrderDetail,
+  VehicleFleetItem 
 } from '../types';
 import { 
   generateOrderCompletionEmail, 
@@ -45,7 +47,8 @@ import {
   INITIAL_UNITS, 
   INITIAL_DEPARTMENTS, 
   INITIAL_SUPPLIERS, 
-  INITIAL_LOCATIONS 
+  INITIAL_LOCATIONS,
+  INITIAL_VEHICLE_FLEET 
 } from '../data/initialData';
 import { 
   supabase, 
@@ -148,6 +151,7 @@ interface AppContextType {
   departments: MasterDepartment[];
   suppliers: MasterSupplier[];
   locations: MasterLocation[];
+  vehicleFleet: VehicleFleetItem[];
   toasts: ToastInfo[];
 
   // Supabase Status & Cloud Sync
@@ -176,6 +180,7 @@ interface AppContextType {
       pickedUpBy?: string;
       quantityApprovedMap?: Record<string, number>;
       recipientEmail?: string;
+      vehicleDetail?: VehicleOrderDetail;
     }
   ) => void;
   deleteRequest: (requestId: string) => void;
@@ -258,6 +263,9 @@ interface AppContextType {
   deleteDepartment: (id: string) => void;
   addSupplier: (sup: Omit<MasterSupplier, 'id'>) => void;
   addLocation: (loc: Omit<MasterLocation, 'id'>) => void;
+  addVehicleFleet: (item: Omit<VehicleFleetItem, 'id'>) => void;
+  updateVehicleFleet: (id: string, data: Partial<VehicleFleetItem>) => void;
+  deleteVehicleFleet: (id: string) => void;
   
   // Notifications & Logs
   markNotificationAsRead: (id: string) => void;
@@ -327,7 +335,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [requests, setRequests] = useState<ServiceRequest[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}requests`);
-    return saved ? JSON.parse(saved) : INITIAL_REQUESTS;
+    if (saved) {
+      try {
+        const parsed: ServiceRequest[] = JSON.parse(saved);
+        const deletedIds = getDeletedRequestIds();
+        const existingIds = new Set(parsed.map(r => r.id));
+        const missingInitial = INITIAL_REQUESTS.filter(
+          ir => !existingIds.has(ir.id) && !deletedIds.has(ir.id)
+        );
+        return missingInitial.length > 0 ? [...parsed, ...missingInitial] : parsed;
+      } catch {
+        return INITIAL_REQUESTS;
+      }
+    }
+    return INITIAL_REQUESTS;
   });
 
   const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>(() => {
@@ -363,6 +384,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [locations, setLocations] = useState<MasterLocation[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}locations`);
     return saved ? JSON.parse(saved) : INITIAL_LOCATIONS;
+  });
+
+  const [vehicleFleet, setVehicleFleet] = useState<VehicleFleetItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}vehicle_fleet`);
+      if (saved) {
+        const parsed: VehicleFleetItem[] = JSON.parse(saved);
+        const normalized = parsed.map(item => ({
+          ...item,
+          ownershipType: item.ownershipType || 'Milik Sekolah',
+          vendorName: item.vendorName || (item.ownershipType === 'Sewa / Vendor' ? 'Vendor Rekanan' : 'Inventaris Yayasan Lazuardi'),
+          rentalPrice: item.rentalPrice ?? 0,
+          rentalPeriod: item.rentalPeriod || (item.ownershipType === 'Sewa / Vendor' ? 'Per Hari (Full Day)' : 'Inventaris Sekolah')
+        }));
+        const hasRentalSeeded = localStorage.getItem(`${STORAGE_KEY_PREFIX}vehicle_fleet_rental_seeded`);
+        if (!hasRentalSeeded && !normalized.some(i => i.ownershipType === 'Sewa / Vendor')) {
+          localStorage.setItem(`${STORAGE_KEY_PREFIX}vehicle_fleet_rental_seeded`, 'true');
+          const initialRentals = INITIAL_VEHICLE_FLEET.filter(i => i.ownershipType === 'Sewa / Vendor');
+          return [...normalized, ...initialRentals];
+        }
+        return normalized;
+      }
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}vehicle_fleet_rental_seeded`, 'true');
+      return INITIAL_VEHICLE_FLEET;
+    } catch {
+      return INITIAL_VEHICLE_FLEET;
+    }
   });
 
   const [toasts, setToasts] = useState<ToastInfo[]>([]);
@@ -824,6 +872,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(`${STORAGE_KEY_PREFIX}locations`, JSON.stringify(locations));
   }, [locations]);
 
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}vehicle_fleet`, JSON.stringify(vehicleFleet));
+  }, [vehicleFleet]);
+
   // Toast functions
   const showToast = (type: ToastInfo['type'], title: string, message?: string, action?: ToastAction) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
@@ -983,7 +1035,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       atk: 'ATK',
       fotocopy: 'FCP',
       laminating: 'LAM',
-      air_galon: 'AIR'
+      air_galon: 'AIR',
+      kendaraan: 'KND'
     };
     const prefix = prefixMap[type] || 'REQ';
     const year = new Date().getFullYear();
@@ -1159,6 +1212,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isRead: false,
         timestamp: new Date().toISOString()
       });
+    } else if (data.serviceType === 'kendaraan') {
+      const catLabel = data.vehicleDetail?.vehicleCategory || 'Kendaraan';
+      const destLabel = data.vehicleDetail?.destination || data.purpose;
+      newNotifications.push({
+        id: `notif-head-${Date.now()}`,
+        title: `[Pemberitahuan Email Kepala Unit ${data.unit}] Order ${catLabel} Baru`,
+        message: `Guru/Staff ${data.userName} mengajukan pemesanan ${catLabel} (${data.vehicleDetail?.vehicleCount || 1} Unit, ${data.vehicleDetail?.passengerCount || 1} Penumpang) tujuan "${destLabel}". Pemberitahuan email terkirim ke ${headName} (${headEmail}) dan menunggu konfirmasi jenis kendaraan & driver oleh Admin/Staff.`,
+        type: 'info',
+        serviceType: data.serviceType,
+        requestId: newRequest.id,
+        isRead: false,
+        timestamp: new Date().toISOString()
+      });
+
+      newNotifications.push({
+        id: `notif-rr-${Date.now() + 1}`,
+        title: `Order ${catLabel} Masuk: ${reqNumber} (${data.unit})`,
+        message: `${data.userName} memesan ${data.vehicleDetail?.vehicleCount || 1} unit ${catLabel} (${data.vehicleDetail?.passengerCount || 1} Penumpang) tujuan ${destLabel}. Berangkat: ${data.vehicleDetail?.departureTime ? new Date(data.vehicleDetail.departureTime).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : '-'}. Silakan konfirmasi jenis kendaraan & driver.`,
+        type: 'info',
+        serviceType: data.serviceType,
+        requestId: newRequest.id,
+        isRead: false,
+        timestamp: new Date().toISOString()
+      });
     } else {
       newNotifications.push({
         id: `notif-${Date.now()}`,
@@ -1195,6 +1272,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       toastMsg = `Nomor Transaksi: ${reqNumber}. Permintaan langsung masuk ke antrean Resources Room & pemberitahuan email telah dikirimkan ke Kepala Unit (${headName}).`;
     } else if (data.serviceType === 'air_galon') {
       toastMsg = `Nomor Bukti: ${reqNumber}. Pengambilan ${data.waterDetail?.gallonCount || 1} galon isi & penyerahan ${data.waterDetail?.emptyGallonsReturned ?? 0} galon kosong berhasil dicatat (Stok langsung disinkronkan).`;
+    } else if (data.serviceType === 'kendaraan') {
+      toastMsg = `Nomor Tiket: ${reqNumber}. Order ${data.vehicleDetail?.vehicleCategory || 'Kendaraan'} tujuan ${data.vehicleDetail?.destination || ''} berhasil diajukan. Jenis kendaraan & driver akan dikonfirmasi oleh Admin/Staff.`;
     }
 
     showToast('success', isWater ? 'Pengambilan Galon Berhasil Dicatat' : 'Permintaan Berhasil Diajukan', toastMsg);
@@ -1211,6 +1290,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       pickedUpBy?: string;
       quantityApprovedMap?: Record<string, number>;
       recipientEmail?: string;
+      vehicleDetail?: VehicleOrderDetail;
     }
   ) => {
     const reqIndex = requests.findIndex(r => r.id === requestId);
@@ -1222,7 +1302,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let updatedReq: ServiceRequest = {
       ...req,
       status,
-      ...extraData
+      ...extraData,
+      vehicleDetail: extraData?.vehicleDetail ? extraData.vehicleDetail : req.vehicleDetail
     };
 
     if (status === 'Disetujui') {
@@ -2328,6 +2409,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('success', 'Lokasi Ditambahkan', data.name);
   };
 
+  const addVehicleFleet = (data: Omit<VehicleFleetItem, 'id'>) => {
+    const newItem: VehicleFleetItem = {
+      ...data,
+      id: `vfl-${Date.now()}`,
+      ownershipType: data.ownershipType || 'Milik Sekolah',
+      rentalPrice: Number(data.rentalPrice) || 0,
+      rentalPeriod: data.rentalPeriod || (data.ownershipType === 'Sewa / Vendor' ? 'Per Hari (Full Day)' : 'Inventaris Sekolah')
+    };
+    setVehicleFleet(prev => [...prev, newItem]);
+    addAuditLog(
+      'Tambah Armada Kendaraan',
+      'Pengaturan Armada',
+      `Menambahkan armada ${newItem.ownershipType}: ${newItem.name} (${newItem.plateNumber})${newItem.rentalPrice ? ` - Harga Sewa Rp ${newItem.rentalPrice.toLocaleString('id-ID')}` : ''}`
+    );
+    showToast(
+      'success',
+      'Armada Berhasil Ditambahkan',
+      `${newItem.name} (${newItem.plateNumber}) tersimpan di katalog armada`
+    );
+  };
+
+  const updateVehicleFleet = (id: string, data: Partial<VehicleFleetItem>) => {
+    setVehicleFleet(prev => prev.map(item => {
+      if (item.id === id) {
+        return { ...item, ...data };
+      }
+      return item;
+    }));
+    const target = vehicleFleet.find(i => i.id === id);
+    addAuditLog(
+      'Update Armada Kendaraan',
+      'Pengaturan Armada',
+      `Memperbarui data armada ${data.name || target?.name || id} (${data.plateNumber || target?.plateNumber || ''})`
+    );
+    showToast(
+      'success',
+      'Data Armada Diperbarui',
+      `Perubahan pada ${data.name || target?.name || 'unit armada'} berhasil disimpan`
+    );
+  };
+
+  const deleteVehicleFleet = (id: string) => {
+    const target = vehicleFleet.find(i => i.id === id);
+    if (!target) return;
+    setVehicleFleet(prev => prev.filter(i => i.id !== id));
+    addAuditLog(
+      'Hapus Armada Kendaraan',
+      'Pengaturan Armada',
+      `Menghapus armada ${target.name} (${target.plateNumber})`
+    );
+    showToast('info', 'Armada Dihapus', `${target.name} (${target.plateNumber}) telah dihapus dari daftar armada`);
+  };
+
   // Notification read
   const markNotificationAsRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
@@ -2358,6 +2492,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDepartments(INITIAL_DEPARTMENTS);
     setSuppliers(INITIAL_SUPPLIERS);
     setLocations(INITIAL_LOCATIONS);
+    setVehicleFleet(INITIAL_VEHICLE_FLEET);
     showToast('info', 'Data Direset', 'Semua data kembali ke konfigurasi awal Sekolah Lazuardi GCS');
   };
 
@@ -2380,6 +2515,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       departments,
       suppliers,
       locations,
+      vehicleFleet,
       toasts,
       supabaseStatus,
       dbInfo,
@@ -2428,6 +2564,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deleteDepartment,
       addSupplier,
       addLocation,
+      addVehicleFleet,
+      updateVehicleFleet,
+      deleteVehicleFleet,
       markNotificationAsRead,
       markAllNotificationsAsRead,
       addAuditLog,

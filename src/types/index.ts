@@ -167,7 +167,70 @@ export type RequestStatus =
   | 'Dibatalkan'
   | 'Stok Tidak Tersedia';
 
-export type ServiceType = 'seragam' | 'atk' | 'fotocopy' | 'air_galon' | 'laminating';
+export type ServiceType = 'seragam' | 'atk' | 'fotocopy' | 'air_galon' | 'laminating' | 'kendaraan';
+
+export type VehicleCategory = 'Kendaraan Operasional' | 'Kendaraan Bus';
+
+export type VehicleOwnershipType = 'Milik Sekolah' | 'Sewa / Vendor';
+
+export type RentalPaymentStatus = 'Belum Keep Order' | 'Keep Order' | 'DP Sewa' | 'Lunas';
+
+export interface VehicleRentalChecklist {
+  keepOrder: boolean;
+  keepOrderDate?: string;
+  dpSewa: boolean;
+  dpSewaDate?: string;
+  dpAmount?: number;
+  lunas: boolean;
+  lunasDate?: string;
+  armadaPrepared?: boolean;
+  armadaPreparedDate?: string;
+}
+
+export interface VehicleFleetItem {
+  id: string;
+  code: string;
+  name: string;
+  category: VehicleCategory;
+  ownershipType?: VehicleOwnershipType;
+  vendorName?: string;
+  rentalPrice?: number;
+  rentalPeriod?: string;
+  plateNumber: string;
+  capacity: number;
+  driverName: string;
+  driverPhone?: string;
+  transmission?: 'Manual' | 'Automatic';
+  fuelType?: 'Bensin' | 'Solar / Diesel' | 'Hybrid';
+  status: 'Tersedia' | 'Sedang Bertugas' | 'Perawatan';
+  notes?: string;
+}
+
+export interface VehicleOrderDetail {
+  vehicleCategory: VehicleCategory;
+  vehicleId?: string;
+  vehicleName: string;
+  plateNumber: string;
+  ownershipType?: VehicleOwnershipType;
+  vendorName?: string;
+  rentalPrice?: number;
+  rentalPeriod?: string;
+  totalRentalCost?: number;
+  rentalChecklist?: VehicleRentalChecklist;
+  rentalPaymentStatus?: RentalPaymentStatus;
+  vehicleCount: number;
+  passengerCount: number;
+  tripPurposeType: string;
+  destination: string;
+  pickupPoint: string;
+  departureTime: string;
+  returnTime: string;
+  driverOption: 'Dengan Sopir (Driver Sekolah)' | 'Lepas Kunci (Mengemudi Sendiri)' | string;
+  driverName?: string;
+  picPhone?: string;
+  fuelTollNote?: string;
+  notes?: string;
+}
 
 export interface RequestItemDetail {
   itemId: string;
@@ -242,6 +305,7 @@ export interface ServiceRequest {
   photocopyDetail?: PhotocopyDetail;
   laminatingDetail?: LaminatingDetail;
   waterDetail?: WaterDetail;
+  vehicleDetail?: VehicleOrderDetail;
   approvedBy?: string;
   approvalDate?: string;
   rejectionReason?: string;

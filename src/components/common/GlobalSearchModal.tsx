@@ -127,6 +127,8 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                             onNavigate('layanan_laminating');
                           } else if (req.serviceType === 'air_galon') {
                             onNavigate('layanan_air');
+                          } else if (req.serviceType === 'kendaraan') {
+                            onNavigate(req.vehicleDetail?.vehicleCategory === 'Kendaraan Bus' ? 'layanan_kendaraan_bus' : 'layanan_kendaraan_ops');
                           } else {
                             onNavigate('permintaan_all');
                           }

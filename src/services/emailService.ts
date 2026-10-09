@@ -216,6 +216,8 @@ export const formatServiceTypeLabel = (type: ServiceType): string => {
       return 'Seragam Sekolah';
     case 'air_galon':
       return 'Air Minum Galon';
+    case 'kendaraan':
+      return 'Order Kendaraan Operasional & Bus Sekolah';
     default:
       return String(type || '').toUpperCase();
   }
@@ -403,6 +405,33 @@ export const generateOrderCompletionEmail = (
         <li><strong>Galon Isi Diserahkan:</strong> <span style="color: #0284c7; font-weight: bold;">${wd.gallonCount} Galon Isi</span></li>
         <li><strong>Galon Kosong Ditukar Kembali:</strong> <span style="color: #d97706; font-weight: bold;">${wd.emptyGallonsReturned ?? 0} Galon</span></li>
         ${wd.notes ? `<li><strong>Catatan:</strong> <em>${wd.notes}</em></li>` : ''}
+      </ul>
+    `;
+  } else if (request.serviceType === 'kendaraan' && request.vehicleDetail) {
+    const vd = request.vehicleDetail;
+    detailsText = [
+      `• Kategori Armada  : ${vd.vehicleCategory}`,
+      `• Unit Kendaraan   : ${vd.vehicleName} (${vd.plateNumber})`,
+      `• Jumlah Armada    : ${vd.vehicleCount || 1} Unit (${vd.passengerCount || 1} Penumpang)`,
+      `• Keperluan Dinas  : ${vd.tripPurposeType}`,
+      `• Tujuan Perjalanan: ${vd.destination}`,
+      `• Titik Jemput     : ${vd.pickupPoint}`,
+      `• Waktu Berangkat  : ${vd.departureTime ? new Date(vd.departureTime).toLocaleString('id-ID') : '-'}`,
+      `• Waktu Kembali    : ${vd.returnTime ? new Date(vd.returnTime).toLocaleString('id-ID') : '-'}`,
+      `• Pengemudi / Sopir: ${vd.driverOption}${vd.driverName ? ` (${vd.driverName})` : ''}`,
+      vd.notes ? `• Catatan          : "${vd.notes}"` : ''
+    ].filter(Boolean).join('\n');
+
+    detailsHtml = `
+      <ul style="margin: 0; padding-left: 20px; line-height: 1.6;">
+        <li><strong>Kategori Armada:</strong> <span style="color: #1d4ed8; font-weight: bold;">${vd.vehicleCategory}</span></li>
+        <li><strong>Unit Kendaraan & Nopol:</strong> ${vd.vehicleName} (<strong>${vd.plateNumber}</strong>)</li>
+        <li><strong>Kapasitas & Armada:</strong> ${vd.vehicleCount || 1} Unit Kendaraan • ${vd.passengerCount || 1} Penumpang</li>
+        <li><strong>Jenis Kegiatan:</strong> ${vd.tripPurposeType}</li>
+        <li><strong>Tujuan / Destinasi:</strong> <strong>${vd.destination}</strong> (Titik Kumpul: ${vd.pickupPoint})</li>
+        <li><strong>Jadwal Keberangkatan:</strong> ${vd.departureTime ? new Date(vd.departureTime).toLocaleString('id-ID') : '-'} s/d ${vd.returnTime ? new Date(vd.returnTime).toLocaleString('id-ID') : '-'}</li>
+        <li><strong>Layanan Pengemudi:</strong> ${vd.driverOption}${vd.driverName ? ` — Driver: <strong>${vd.driverName}</strong>` : ''}</li>
+        ${vd.notes ? `<li><strong>Catatan Perjalanan:</strong> <em>${vd.notes}</em></li>` : ''}
       </ul>
     `;
   }

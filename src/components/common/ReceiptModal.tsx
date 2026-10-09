@@ -227,6 +227,66 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             </div>
           )}
 
+          {request.serviceType === 'kendaraan' && request.vehicleDetail && (
+            <div className="mt-4 bg-slate-50 p-3 rounded border border-slate-200 text-xs space-y-2">
+              <h4 className="font-bold text-indigo-900 uppercase">
+                Surat Jalan &amp; Spesifikasi Order {request.vehicleDetail.vehicleCategory}:
+              </h4>
+              <div className="grid grid-cols-2 gap-2">
+                <div>Kategori Armada: <strong>{request.vehicleDetail.vehicleCategory}</strong></div>
+                <div>Unit Kendaraan: <strong>{request.vehicleDetail.vehicleName} ({request.vehicleDetail.plateNumber})</strong></div>
+                <div>Tujuan / Destinasi: <strong>{request.vehicleDetail.destination}</strong></div>
+                <div>Titik Keberangkatan: <strong>{request.vehicleDetail.pickupPoint}</strong></div>
+                <div>Waktu Berangkat: <strong>{new Date(request.vehicleDetail.departureTime).toLocaleString('id-ID')}</strong></div>
+                <div>Estimasi Kembali: <strong>{new Date(request.vehicleDetail.returnTime).toLocaleString('id-ID')}</strong></div>
+                <div>Jumlah Armada &amp; Penumpang: <strong className="text-indigo-900 font-bold">{request.vehicleDetail.vehicleCount || 1} Unit • {request.vehicleDetail.passengerCount} Penumpang</strong></div>
+                <div>Pengemudi / Sopir: <strong>{request.vehicleDetail.driverOption} ({request.vehicleDetail.driverName || 'Driver Sekolah'})</strong></div>
+                {request.vehicleDetail.ownershipType && (
+                  <div>Kepemilikan Armada: <strong>{request.vehicleDetail.ownershipType} {request.vehicleDetail.vendorName ? `(${request.vehicleDetail.vendorName})` : ''}</strong></div>
+                )}
+                {request.vehicleDetail.rentalPrice && request.vehicleDetail.rentalPrice > 0 ? (
+                  <div>
+                    Harga Sewa Armada:{' '}
+                    <strong className="text-emerald-800 font-mono">
+                      Rp {request.vehicleDetail.rentalPrice.toLocaleString('id-ID')} / unit
+                      {(request.vehicleDetail.vehicleCount || 1) > 1
+                        ? ` (Total: Rp ${(request.vehicleDetail.totalRentalCost || request.vehicleDetail.rentalPrice * (request.vehicleDetail.vehicleCount || 1)).toLocaleString('id-ID')})`
+                        : ''}
+                    </strong>
+                  </div>
+                ) : null}
+                {(request.vehicleDetail.vehicleCategory === 'Kendaraan Bus' ||
+                  request.vehicleDetail.ownershipType === 'Sewa / Vendor' ||
+                  (request.vehicleDetail.rentalPrice && request.vehicleDetail.rentalPrice > 0)) && (
+                  <div className="col-span-2 bg-white p-2 rounded border border-slate-200 flex items-center justify-between flex-wrap gap-2">
+                    <span className="font-bold text-slate-700">
+                      Ceklist Siapkan Armada &amp; Driver (Bus / Sewa):
+                    </span>
+                    <div className="flex items-center gap-2 font-bold text-[11px]">
+                      <span className={request.vehicleDetail.rentalChecklist?.keepOrder ? 'text-amber-800' : 'text-slate-400'}>
+                        [{request.vehicleDetail.rentalChecklist?.keepOrder ? '✓' : ' '}] Keep Order
+                      </span>
+                      <span className={request.vehicleDetail.rentalChecklist?.dpSewa ? 'text-blue-800' : 'text-slate-400'}>
+                        [{request.vehicleDetail.rentalChecklist?.dpSewa ? '✓' : ' '}] DP Sewa
+                      </span>
+                      <span className={request.vehicleDetail.rentalChecklist?.lunas ? 'text-emerald-800' : 'text-slate-400'}>
+                        [{request.vehicleDetail.rentalChecklist?.lunas ? '✓' : ' '}] Lunas
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {request.vehicleDetail.fuelTollNote && (
+                  <div className="col-span-2">Fasilitas BBM &amp; Tol: <strong>{request.vehicleDetail.fuelTollNote}</strong></div>
+                )}
+                {request.vehicleDetail.notes && (
+                  <div className="col-span-2 text-[11px] text-slate-600 bg-white p-1.5 rounded border border-slate-200">
+                    <strong>Catatan Perjalanan:</strong> {request.vehicleDetail.notes}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Signatures Footer */}
           <div className="mt-8 pt-4 border-t border-slate-300 grid grid-cols-3 gap-4 text-center text-xs">
             <div>

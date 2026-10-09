@@ -43,8 +43,10 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({
 
   const isPhotocopy = request.serviceType === 'fotocopy';
   const isLaminating = request.serviceType === 'laminating';
+  const isVehicle = request.serviceType === 'kendaraan';
   const photoDetail = request.photocopyDetail;
   const laminDetail = request.laminatingDetail;
+  const vehicleDetail = request.vehicleDetail;
 
   const handleCopyTicket = () => {
     navigator.clipboard.writeText(request.requestNumber);
@@ -115,22 +117,26 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({
     {
       id: 3,
       key: 'processing',
-      title: isPhotocopy ? 'Sedang Dicopy Mesin' : isLaminating ? 'Sedang Dilaminasi Mesin' : 'Proses Pengerjaan',
+      title: isPhotocopy ? 'Sedang Dicopy Mesin' : isLaminating ? 'Sedang Dilaminasi Mesin' : isVehicle ? 'Penyiapan Armada & Driver' : 'Proses Pengerjaan',
       description: isPhotocopy 
         ? 'Proses cetak penggandaan dokumen, penyusunan halaman, & penjilidan' 
         : isLaminating 
           ? 'Proses pemanasan roller film & pelapisan dokumen presisi' 
-          : 'Pengerjaan berkas oleh operator',
-      locationNote: isPhotocopy ? 'Mesin Fotokopi Canon/Xerox RR' : 'Mesin Laminating Panas RR',
+          : isVehicle
+            ? `Pengecekan kesiapan unit ${vehicleDetail?.vehicleName || 'kendaraan'}, BBM, E-Toll & penugasan driver (${vehicleDetail?.driverName || 'Driver Sekolah'})`
+            : 'Pengerjaan berkas oleh operator',
+      locationNote: isPhotocopy ? 'Mesin Fotokopi Canon/Xerox RR' : isLaminating ? 'Mesin Laminating Panas RR' : 'Pool Armada & Transportasi Lazuardi',
       status: getStepStatus(3, request.status),
-      timestamp: request.processedBy ? `Operator: ${request.processedBy}` : undefined
+      timestamp: request.processedBy ? `Koordinator: ${request.processedBy}` : undefined
     },
     {
       id: 4,
       key: 'ready',
-      title: 'Siap Diambil di Loket',
-      description: 'Produksi selesai dan dokumen siap diambil oleh pemohon',
-      locationNote: 'Rak Pengambilan Dokumen Resources Room',
+      title: isVehicle ? 'Armada Standby / Dalam Perjalanan' : 'Siap Diambil di Loket',
+      description: isVehicle
+        ? `Kendaraan sudah standby di ${vehicleDetail?.pickupPoint || 'Lobby Kampus'} dan siap mengantar menuju ${vehicleDetail?.destination || 'tujuan'}`
+        : 'Produksi selesai dan dokumen siap diambil oleh pemohon',
+      locationNote: isVehicle ? (vehicleDetail?.pickupPoint || 'Lobby Utama Kampus Lazuardi') : 'Rak Pengambilan Dokumen Resources Room',
       status: getStepStatus(4, request.status)
     },
     {
@@ -285,6 +291,38 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({
                       )}
                     </div>
                     <p className={`text-[11px] leading-relaxed ${lineDescClass}`}>{step.description}</p>
+                    {isVehicle &&
+                      step.key === 'processing' &&
+                      (vehicleDetail?.vehicleCategory === 'Kendaraan Bus' ||
+                        vehicleDetail?.ownershipType === 'Sewa / Vendor' ||
+                        (vehicleDetail?.rentalPrice && vehicleDetail.rentalPrice > 0)) && (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <span className="text-[10px] font-bold text-slate-500 mr-0.5">
+                            Ceklist Siapkan Armada &amp; Driver:
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                            vehicleDetail?.rentalChecklist?.keepOrder
+                              ? 'bg-amber-100 text-amber-900 border-amber-300'
+                              : 'bg-white text-slate-400 border-slate-200'
+                          }`}>
+                            {vehicleDetail?.rentalChecklist?.keepOrder ? '✓ ' : ''}Keep Order
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                            vehicleDetail?.rentalChecklist?.dpSewa
+                              ? 'bg-blue-100 text-blue-900 border-blue-300'
+                              : 'bg-white text-slate-400 border-slate-200'
+                          }`}>
+                            {vehicleDetail?.rentalChecklist?.dpSewa ? '✓ ' : ''}DP Sewa
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                            vehicleDetail?.rentalChecklist?.lunas
+                              ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                              : 'bg-white text-slate-400 border-slate-200'
+                          }`}>
+                            {vehicleDetail?.rentalChecklist?.lunas ? '✓ ' : ''}Lunas
+                          </span>
+                        </div>
+                      )}
                     <div className="flex items-center gap-1 text-[10px] text-slate-400 pt-0.5">
                       <MapPin className="w-3 h-3 text-slate-400" />
                       <span>Lokasi: {step.locationNote}</span>
@@ -361,6 +399,31 @@ export const TrackOrderModal: React.FC<TrackOrderModalProps> = ({
               <div>
                 <span className="text-slate-400 block text-[10px]">Ketebalan Plastik</span>
                 <span className="font-semibold text-slate-700">{laminDetail.thickness || '100 Micron Standar'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Vehicle Specs Grid */}
+          {isVehicle && vehicleDetail && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-indigo-50/50 p-3 rounded-lg border border-indigo-100 text-[11px]">
+              <div>
+                <span className="text-slate-400 block text-[10px]">Kategori &amp; Unit</span>
+                <span className="font-bold text-indigo-950">{vehicleDetail.vehicleName}</span>
+                <span className="font-mono text-[10px] text-slate-500 block">{vehicleDetail.plateNumber}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px]">Tujuan Perjalanan</span>
+                <span className="font-bold text-slate-800">{vehicleDetail.destination}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px]">Kapasitas Rombongan</span>
+                <span className="font-extrabold text-indigo-900 bg-indigo-100/80 px-1.5 py-0.5 rounded">
+                  {vehicleDetail.passengerCount} Penumpang ({vehicleDetail.vehicleCount || 1} Unit)
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px]">Pengemudi / Sopir</span>
+                <span className="font-semibold text-slate-800">{vehicleDetail.driverName || vehicleDetail.driverOption}</span>
               </div>
             </div>
           )}

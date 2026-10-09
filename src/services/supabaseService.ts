@@ -233,8 +233,8 @@ export const transformWaterOpnameRecordFromDB = (row: any): WaterOpnameRecord =>
 });
 
 export const transformRequestToDB = (r: ServiceRequest) => {
-  // If email report info is present, embed it safely in admin_notes or a clean marker
-  // so that if the table doesn't have email_sent_* columns, the data is still 100% preserved!
+  // If email report info or vehicleDetail is present, embed it safely in admin_notes or a clean marker
+  // so that if the table doesn't have email_sent_* or vehicle_detail columns, the data is still 100% preserved!
   let adminNotes = r.adminNotes || '';
   if (r.emailSentToHead && !adminNotes.includes('<!--EMAIL_META:')) {
     const meta = JSON.stringify({
@@ -243,6 +243,10 @@ export const transformRequestToDB = (r: ServiceRequest) => {
       to: r.emailSentRecipient || ''
     });
     adminNotes = adminNotes ? `${adminNotes} <!--EMAIL_META:${meta}-->` : `<!--EMAIL_META:${meta}-->`;
+  }
+  if (r.vehicleDetail && !adminNotes.includes('<!--VEHICLE_META:')) {
+    const vMeta = JSON.stringify(r.vehicleDetail);
+    adminNotes = adminNotes ? `${adminNotes} <!--VEHICLE_META:${vMeta}-->` : `<!--VEHICLE_META:${vMeta}-->`;
   }
 
   return {
@@ -263,6 +267,7 @@ export const transformRequestToDB = (r: ServiceRequest) => {
     photocopy_detail: r.photocopyDetail || null,
     laminating_detail: r.laminatingDetail || null,
     water_detail: r.waterDetail || null,
+    vehicle_detail: r.vehicleDetail || null,
     approved_by: r.approvedBy || null,
     approval_date: r.approvalDate || null,
     rejection_reason: r.rejectionReason || null,
@@ -280,6 +285,7 @@ export const transformRequestFromDB = (row: any): ServiceRequest => {
   let emailSentToHead = Boolean(row.email_sent_to_head);
   let emailSentDate = row.email_sent_date || undefined;
   let emailSentRecipient = row.email_sent_recipient || undefined;
+  let vehicleDetail = row.vehicle_detail || undefined;
   let cleanAdminNotes = row.admin_notes || undefined;
 
   // Extract from embedded metadata if columns didn't exist in Supabase table
@@ -297,6 +303,21 @@ export const transformRequestFromDB = (row: any): ServiceRequest => {
         // ignore JSON parse error
       }
       cleanAdminNotes = cleanAdminNotes.replace(/<!--EMAIL_META:\{.*?\}-->/, '').trim() || undefined;
+    }
+  }
+
+  if (cleanAdminNotes && cleanAdminNotes.includes('<!--VEHICLE_META:')) {
+    const vMatch = cleanAdminNotes.match(/<!--VEHICLE_META:(\{.*?\})-->/);
+    if (vMatch && vMatch[1]) {
+      try {
+        const parsedVehicle = JSON.parse(vMatch[1]);
+        if (!vehicleDetail) {
+          vehicleDetail = parsedVehicle;
+        }
+      } catch {
+        // ignore JSON parse error
+      }
+      cleanAdminNotes = cleanAdminNotes.replace(/<!--VEHICLE_META:\{.*?\}-->/, '').trim() || undefined;
     }
   }
 
@@ -318,6 +339,7 @@ export const transformRequestFromDB = (row: any): ServiceRequest => {
     photocopyDetail: row.photocopy_detail || undefined,
     laminatingDetail: row.laminating_detail || undefined,
     waterDetail: row.water_detail || undefined,
+    vehicleDetail,
     approvedBy: row.approved_by || undefined,
     approvalDate: row.approval_date || undefined,
     rejectionReason: row.rejection_reason || undefined,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { User, UserRole, RoleConfig, RolePermissions, MasterUnit, MasterDepartment, WaterLocation } from '../types';
+import { User, UserRole, RoleConfig, RolePermissions, MasterUnit, MasterDepartment, WaterLocation, VehicleFleetItem, VehicleCategory, VehicleOwnershipType } from '../types';
 import { 
   Settings, 
   Users, 
@@ -39,7 +39,11 @@ import {
   ArrowRight,
   Cloud,
   CheckCircle,
-  Mail
+  Mail,
+  Car,
+  Bus,
+  Wrench,
+  Phone
 } from 'lucide-react';
 import { RoleBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -49,7 +53,7 @@ import { SUPABASE_CONFIG_SCHEMA_SQL } from '../lib/supabaseSqlSchema';
 import { PROJECT_METADATA } from '../lib/supabase';
 
 interface SettingsViewProps {
-  initialTab?: 'roles' | 'users' | 'units' | 'galon' | 'database' | 'system' | 'email_logs';
+  initialTab?: 'roles' | 'users' | 'units' | 'armada' | 'galon' | 'database' | 'system' | 'email_logs';
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles' }) => {
@@ -65,6 +69,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     waterInventory,
     waterProviderLogs,
     waterOpnameRecords,
+    vehicleFleet,
     supabaseStatus,
     dbInfo,
     isSyncingToSupabase,
@@ -89,10 +94,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     addDepartment,
     updateDepartment,
     deleteDepartment,
+    addVehicleFleet,
+    updateVehicleFleet,
+    deleteVehicleFleet,
     showToast
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'roles' | 'users' | 'units' | 'galon' | 'database' | 'system' | 'email_logs'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'roles' | 'users' | 'units' | 'armada' | 'galon' | 'database' | 'system' | 'email_logs'>(initialTab);
   const [copiedSql, setCopiedSql] = useState(false);
   const [showSqlViewer, setShowSqlViewer] = useState(false);
 
@@ -187,6 +195,138 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     status: 'Aktif' as 'Aktif' | 'Nonaktif' | 'Perbaikan Dispenser',
     notes: ''
   });
+
+  // Master Armada Sekolah & Armada Sewa States
+  const [fleetSearch, setFleetSearch] = useState('');
+  const [fleetOwnershipFilter, setFleetOwnershipFilter] = useState<'all' | 'Milik Sekolah' | 'Sewa / Vendor'>('all');
+  const [fleetCategoryFilter, setFleetCategoryFilter] = useState<'all' | VehicleCategory>('all');
+  const [isFleetModalOpen, setIsFleetModalOpen] = useState(false);
+  const [editingFleetItem, setEditingFleetItem] = useState<VehicleFleetItem | null>(null);
+  const [deleteFleetConfirm, setDeleteFleetConfirm] = useState<VehicleFleetItem | null>(null);
+  const [fleetForm, setFleetForm] = useState<{
+    code: string;
+    name: string;
+    category: VehicleCategory;
+    ownershipType: VehicleOwnershipType;
+    vendorName: string;
+    rentalPrice: number | '';
+    rentalPeriod: string;
+    plateNumber: string;
+    capacity: number | '';
+    driverName: string;
+    driverPhone: string;
+    transmission: 'Manual' | 'Automatic';
+    fuelType: 'Bensin' | 'Solar / Diesel' | 'Hybrid';
+    status: 'Tersedia' | 'Sedang Bertugas' | 'Perawatan';
+    notes: string;
+  }>({
+    code: 'OPS-05',
+    name: '',
+    category: 'Kendaraan Operasional',
+    ownershipType: 'Milik Sekolah',
+    vendorName: 'Inventaris Yayasan Lazuardi',
+    rentalPrice: 0,
+    rentalPeriod: 'Inventaris Sekolah',
+    plateNumber: '',
+    capacity: 7,
+    driverName: '',
+    driverPhone: '',
+    transmission: 'Automatic',
+    fuelType: 'Bensin',
+    status: 'Tersedia',
+    notes: ''
+  });
+
+  const handleOpenAddFleet = (defaultOwnership: VehicleOwnershipType = 'Milik Sekolah', defaultCategory: VehicleCategory = 'Kendaraan Bus') => {
+    setEditingFleetItem(null);
+    const isRental = defaultOwnership === 'Sewa / Vendor';
+    const prefix = isRental
+      ? (defaultCategory === 'Kendaraan Bus' ? 'SEWA-BUS' : 'SEWA-OPS')
+      : (defaultCategory === 'Kendaraan Bus' ? 'BUS' : 'OPS');
+    const existingCount = vehicleFleet.filter(f => f.code.startsWith(prefix)).length + 1;
+    const autoCode = `${prefix}-${String(existingCount).padStart(2, '0')}`;
+
+    setFleetForm({
+      code: autoCode,
+      name: '',
+      category: defaultCategory,
+      ownershipType: defaultOwnership,
+      vendorName: isRental ? 'PO Mitra Pariwisata Lazuardi' : 'Inventaris Yayasan Lazuardi',
+      rentalPrice: isRental ? (defaultCategory === 'Kendaraan Bus' ? 2500000 : 850000) : 0,
+      rentalPeriod: isRental ? 'Per Hari (Full Day)' : 'Inventaris Sekolah',
+      plateNumber: '',
+      capacity: defaultCategory === 'Kendaraan Bus' ? 35 : 7,
+      driverName: '',
+      driverPhone: '',
+      transmission: defaultCategory === 'Kendaraan Bus' ? 'Manual' : 'Automatic',
+      fuelType: defaultCategory === 'Kendaraan Bus' ? 'Solar / Diesel' : 'Bensin',
+      status: 'Tersedia',
+      notes: ''
+    });
+    setIsFleetModalOpen(true);
+  };
+
+  const handleOpenEditFleet = (item: VehicleFleetItem) => {
+    setEditingFleetItem(item);
+    setFleetForm({
+      code: item.code,
+      name: item.name,
+      category: item.category,
+      ownershipType: item.ownershipType || 'Milik Sekolah',
+      vendorName: item.vendorName || (item.ownershipType === 'Sewa / Vendor' ? 'PO Mitra Pariwisata' : 'Inventaris Yayasan Lazuardi'),
+      rentalPrice: item.rentalPrice ?? 0,
+      rentalPeriod: item.rentalPeriod || (item.ownershipType === 'Sewa / Vendor' ? 'Per Hari (Full Day)' : 'Inventaris Sekolah'),
+      plateNumber: item.plateNumber,
+      capacity: item.capacity,
+      driverName: item.driverName,
+      driverPhone: item.driverPhone || '',
+      transmission: item.transmission || 'Manual',
+      fuelType: item.fuelType || 'Bensin',
+      status: item.status,
+      notes: item.notes || ''
+    });
+    setIsFleetModalOpen(true);
+  };
+
+  const handleSaveFleetItem = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fleetForm.name.trim() || !fleetForm.plateNumber.trim()) {
+      showToast('error', 'Validasi Gagal', 'Nama kendaraan/bus dan nomor polisi wajib diisi.');
+      return;
+    }
+
+    const payload: Omit<VehicleFleetItem, 'id'> = {
+      code: fleetForm.code.trim().toUpperCase() || 'ARM-01',
+      name: fleetForm.name.trim(),
+      category: fleetForm.category,
+      ownershipType: fleetForm.ownershipType,
+      vendorName: fleetForm.vendorName.trim() || (fleetForm.ownershipType === 'Sewa / Vendor' ? 'Vendor Rekanan' : 'Inventaris Yayasan Lazuardi'),
+      rentalPrice: Math.max(0, Number(fleetForm.rentalPrice) || 0),
+      rentalPeriod: fleetForm.rentalPeriod || (fleetForm.ownershipType === 'Sewa / Vendor' ? 'Per Hari (Full Day)' : 'Inventaris Sekolah'),
+      plateNumber: fleetForm.plateNumber.trim().toUpperCase(),
+      capacity: Math.max(1, Number(fleetForm.capacity) || 7),
+      driverName: fleetForm.driverName.trim() || 'Driver Sekolah / Vendor',
+      driverPhone: fleetForm.driverPhone.trim(),
+      transmission: fleetForm.transmission,
+      fuelType: fleetForm.fuelType,
+      status: fleetForm.status,
+      notes: fleetForm.notes.trim()
+    };
+
+    if (editingFleetItem) {
+      updateVehicleFleet(editingFleetItem.id, payload);
+    } else {
+      addVehicleFleet(payload);
+    }
+    setIsFleetModalOpen(false);
+    setEditingFleetItem(null);
+  };
+
+  const handleConfirmDeleteFleet = () => {
+    if (!deleteFleetConfirm) return;
+    deleteVehicleFleet(deleteFleetConfirm.id);
+    setDeleteFleetConfirm(null);
+  };
 
   // Keep permissions draft in sync when selecting a role or roleConfigs change
   useEffect(() => {
@@ -829,6 +969,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
             </button>
           </div>
         )}
+
+        {activeTab === 'armada' && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => handleOpenAddFleet('Milik Sekolah', 'Kendaraan Operasional')}
+              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+            >
+              <Car className="w-4 h-4" />
+              <span>+ Armada Milik Sekolah</span>
+            </button>
+            <button
+              onClick={() => handleOpenAddFleet('Sewa / Vendor', 'Kendaraan Bus')}
+              className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+            >
+              <Bus className="w-4 h-4" />
+              <span>+ Armada Sewa &amp; Harga Sewa</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Tabs Navigation */}
@@ -861,6 +1020,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
         >
           <Building className="w-4 h-4" />
           <span>Unit &amp; Departemen</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('armada')}
+          className={`px-3.5 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'armada' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <Bus className={`w-4 h-4 ${activeTab === 'armada' ? 'text-white' : 'text-amber-600'}`} />
+          <span>Armada Sekolah &amp; Sewa Bus ({vehicleFleet.length})</span>
         </button>
 
         <button
@@ -2444,6 +2613,370 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
         </div>
       )}
 
+      {/* TAB: MASTER ARMADA SEKOLAH & ARMADA SEWA BUS / KENDARAAN */}
+      {activeTab === 'armada' && (() => {
+        const schoolFleetList = vehicleFleet.filter(f => (f.ownershipType || 'Milik Sekolah') === 'Milik Sekolah');
+        const rentalFleetList = vehicleFleet.filter(f => f.ownershipType === 'Sewa / Vendor');
+        const filteredFleet = vehicleFleet.filter(item => {
+          const itemOwnership = item.ownershipType || 'Milik Sekolah';
+          if (fleetOwnershipFilter !== 'all' && itemOwnership !== fleetOwnershipFilter) return false;
+          if (fleetCategoryFilter !== 'all' && item.category !== fleetCategoryFilter) return false;
+          if (fleetSearch.trim()) {
+            const q = fleetSearch.toLowerCase();
+            return (
+              item.name.toLowerCase().includes(q) ||
+              item.code.toLowerCase().includes(q) ||
+              item.plateNumber.toLowerCase().includes(q) ||
+              item.driverName.toLowerCase().includes(q) ||
+              (item.vendorName || '').toLowerCase().includes(q) ||
+              (item.notes || '').toLowerCase().includes(q)
+            );
+          }
+          return true;
+        });
+
+        const rentalPrices = rentalFleetList.map(r => r.rentalPrice || 0).filter(p => p > 0);
+        const minRentalPrice = rentalPrices.length > 0 ? Math.min(...rentalPrices) : 0;
+        const maxRentalPrice = rentalPrices.length > 0 ? Math.max(...rentalPrices) : 0;
+
+        return (
+          <div className="space-y-6">
+            {/* 4 KPI Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div
+                onClick={() => setFleetOwnershipFilter('all')}
+                className={`bg-white p-4 rounded-xl border transition-all cursor-pointer ${
+                  fleetOwnershipFilter === 'all' ? 'border-slate-900 ring-2 ring-slate-900/10' : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                  <span>TOTAL KATALOG ARMADA</span>
+                  <Car className="w-4 h-4 text-slate-700" />
+                </div>
+                <p className="text-2xl font-black text-slate-900 mt-1">
+                  {vehicleFleet.length} <span className="text-xs font-normal text-slate-500">Unit Terdaftar</span>
+                </p>
+                <span className="text-[11px] text-slate-500 block mt-1">
+                  {vehicleFleet.filter(f => f.category === 'Kendaraan Operasional').length} Mobil Operasional • {vehicleFleet.filter(f => f.category === 'Kendaraan Bus').length} Bus
+                </span>
+              </div>
+
+              <div
+                onClick={() => setFleetOwnershipFilter('Milik Sekolah')}
+                className={`bg-white p-4 rounded-xl border transition-all cursor-pointer ${
+                  fleetOwnershipFilter === 'Milik Sekolah' ? 'border-blue-600 ring-2 ring-blue-500/15' : 'border-slate-200 hover:border-blue-300'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-blue-700">
+                  <span>ARMADA MILIK SEKOLAH</span>
+                  <ShieldCheck className="w-4 h-4 text-blue-600" />
+                </div>
+                <p className="text-2xl font-black text-blue-700 mt-1">
+                  {schoolFleetList.length} <span className="text-xs font-normal text-slate-500">Unit Inventaris</span>
+                </p>
+                <span className="text-[11px] text-slate-500 block mt-1">
+                  {schoolFleetList.filter(f => f.category === 'Kendaraan Operasional').length} Operasional • {schoolFleetList.filter(f => f.category === 'Kendaraan Bus').length} Bus Sekolah
+                </span>
+              </div>
+
+              <div
+                onClick={() => setFleetOwnershipFilter('Sewa / Vendor')}
+                className={`bg-white p-4 rounded-xl border transition-all cursor-pointer ${
+                  fleetOwnershipFilter === 'Sewa / Vendor' ? 'border-amber-600 ring-2 ring-amber-500/15' : 'border-slate-200 hover:border-amber-300'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-amber-700">
+                  <span>ARMADA BUS &amp; KENDARAAN SEWA</span>
+                  <Bus className="w-4 h-4 text-amber-600" />
+                </div>
+                <p className="text-2xl font-black text-amber-700 mt-1">
+                  {rentalFleetList.length} <span className="text-xs font-normal text-slate-500">Unit Siap Disewa</span>
+                </p>
+                <span className="text-[11px] text-slate-500 block mt-1">
+                  Rekanan PO Bus &amp; Rental Kendaraan Siap Pakai
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200">
+                <div className="flex items-center justify-between text-xs font-semibold text-emerald-700">
+                  <span>RENTANG HARGA SEWA</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                </div>
+                <p className="text-base font-black text-emerald-800 mt-1.5 font-mono">
+                  {minRentalPrice > 0
+                    ? `Rp ${(minRentalPrice / 1000).toLocaleString('id-ID')}rb - Rp ${(maxRentalPrice / 1000000).toFixed(2)}jt`
+                    : 'Rp 0'}
+                </p>
+                <span className="text-[11px] text-slate-500 block mt-1">
+                  Tarif sewa per bus / kendaraan per hari
+                </span>
+              </div>
+            </div>
+
+            {/* Filter & Action Toolbar */}
+            <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                {/* Ownership Filter Tabs */}
+                <div className="flex items-center gap-1.5 flex-wrap bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setFleetOwnershipFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      fleetOwnershipFilter === 'all'
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Semua Armada ({vehicleFleet.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFleetOwnershipFilter('Milik Sekolah')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      fleetOwnershipFilter === 'Milik Sekolah'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-blue-700'
+                    }`}
+                  >
+                    <Car className="w-3.5 h-3.5" />
+                    <span>Armada Milik Sekolah ({schoolFleetList.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFleetOwnershipFilter('Sewa / Vendor')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      fleetOwnershipFilter === 'Sewa / Vendor'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-amber-700'
+                    }`}
+                  >
+                    <Bus className="w-3.5 h-3.5" />
+                    <span>Armada Siap Disewa + Harga Sewa ({rentalFleetList.length})</span>
+                  </button>
+                </div>
+
+                {/* Search & Category Select */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative flex-1 sm:flex-initial">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Cari mobil/bus, nopol, vendor, driver..."
+                      value={fleetSearch}
+                      onChange={(e) => setFleetSearch(e.target.value)}
+                      className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 w-full sm:w-60 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <select
+                    value={fleetCategoryFilter}
+                    onChange={(e) => setFleetCategoryFilter(e.target.value as any)}
+                    className="px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700"
+                  >
+                    <option value="all">Semua Kategori</option>
+                    <option value="Kendaraan Operasional">Kendaraan Operasional</option>
+                    <option value="Kendaraan Bus">Kendaraan Bus</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Table Daftar Master Armada & Harga Sewa */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                     Pengaturan Armada Milik Sekolah &amp; Katalog Bus / Kendaraan Siap Disewa ({filteredFleet.length} Unit)
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Kelola, tambah, atau ubah (edit) spesifikasi armada milik sekolah serta daftar armada sewa beserta harga sewa per unitnya
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddFleet('Milik Sekolah', 'Kendaraan Operasional')}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Tambah Armada Sekolah</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddFleet('Sewa / Vendor', 'Kendaraan Bus')}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Tambah Armada Sewa</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 uppercase text-[11px]">
+                    <tr>
+                      <th className="p-3.5">Kode &amp; Kategori</th>
+                      <th className="p-3.5">Kepemilikan / Penyedia</th>
+                      <th className="p-3.5">Nama Bus / Kendaraan</th>
+                      <th className="p-3.5">No. Polisi &amp; Kursi</th>
+                      <th className="p-3.5">Harga Sewa / Unit</th>
+                      <th className="p-3.5">Driver Utama</th>
+                      <th className="p-3.5">Status</th>
+                      <th className="p-3.5 text-right">Aksi (Edit / Hapus)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredFleet.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="p-8 text-center text-slate-400">
+                          Tidak ada data armada yang sesuai dengan filter pencarian.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredFleet.map((item) => {
+                        const isBus = item.category === 'Kendaraan Bus';
+                        const isRental = item.ownershipType === 'Sewa / Vendor';
+                        const price = item.rentalPrice || 0;
+
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="p-3.5 whitespace-nowrap">
+                              <span className="font-mono font-bold text-slate-900 block">{item.code}</span>
+                              <span className={`inline-flex items-center gap-1 text-[10px] font-bold mt-0.5 ${
+                                isBus ? 'text-amber-700' : 'text-blue-700'
+                              }`}>
+                                {isBus ? <Bus className="w-3 h-3" /> : <Car className="w-3 h-3" />}
+                                {item.category}
+                              </span>
+                            </td>
+
+                            <td className="p-3.5">
+                              {isRental ? (
+                                <div>
+                                  <span className="inline-block px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[10px] border border-amber-300">
+                                    Siap Disewa (Vendor)
+                                  </span>
+                                  <span className="block text-[11px] text-slate-600 font-medium mt-0.5">
+                                    {item.vendorName || 'Vendor Rekanan'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="inline-block px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-bold text-[10px] border border-blue-200">
+                                    Milik Sekolah
+                                  </span>
+                                  <span className="block text-[11px] text-slate-500 mt-0.5">
+                                    {item.vendorName || 'Inventaris Yayasan Lazuardi'}
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="p-3.5 max-w-xs">
+                              <strong className="text-slate-900 font-bold block">{item.name}</strong>
+                              <span className="text-[11px] text-slate-500 block">
+                                {item.transmission || 'Manual'} • {item.fuelType || 'Bensin'}
+                              </span>
+                              {item.notes && (
+                                <span className="text-[10px] text-slate-400 italic block truncate" title={item.notes}>
+                                  {item.notes}
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="p-3.5 whitespace-nowrap">
+                              <span className="font-mono font-black text-xs bg-slate-900 text-white px-2 py-0.5 rounded inline-block">
+                                {item.plateNumber}
+                              </span>
+                              <span className="block text-[11px] font-bold text-slate-700 mt-1">
+                                Kapasitas: {item.capacity} Kursi
+                              </span>
+                            </td>
+
+                            <td className="p-3.5 whitespace-nowrap">
+                              {price > 0 ? (
+                                <div>
+                                  <span className="font-mono font-extrabold text-sm text-emerald-700 block">
+                                    Rp {price.toLocaleString('id-ID')}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500 font-semibold block">
+                                    {item.rentalPeriod || 'Per Hari (Full Day)'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="text-xs font-bold text-slate-600 block">
+                                    Rp 0 (Internal)
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 block">
+                                    {item.rentalPeriod || 'Inventaris Sekolah'}
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="p-3.5">
+                              <span className="font-bold text-slate-800 block">{item.driverName || '-'}</span>
+                              {item.driverPhone && (
+                                <span className="text-[11px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                                  <Phone className="w-3 h-3 text-slate-400" />
+                                  {item.driverPhone}
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="p-3.5 whitespace-nowrap">
+                              <select
+                                value={item.status}
+                                onChange={(e) => updateVehicleFleet(item.id, { status: e.target.value as any })}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
+                                  item.status === 'Tersedia'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                    : item.status === 'Sedang Bertugas'
+                                    ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                                }`}
+                              >
+                                <option value="Tersedia">Tersedia</option>
+                                <option value="Sedang Bertugas">Sedang Bertugas</option>
+                                <option value="Perawatan">Perawatan</option>
+                              </select>
+                            </td>
+
+                            <td className="p-3.5 text-right whitespace-nowrap">
+                              <div className="inline-flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditFleet(item)}
+                                  className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg font-bold text-xs inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                  title="Edit Armada & Harga Sewa"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteFleetConfirm(item)}
+                                  className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg cursor-pointer transition-colors"
+                                  title="Hapus Armada"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* TAB: LAPORAN EMAIL RESMI KEPALA UNIT */}
       {activeTab === 'email_logs' && (
         <EmailNotificationLogsTab />
@@ -3251,6 +3784,387 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
               className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg cursor-pointer shadow-xs"
             >
               Ya, Hapus Titik Galon
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* MODAL TAMBAH / EDIT ARMADA SEKOLAH & ARMADA SEWA BUS / KENDARAAN */}
+      <Modal
+        isOpen={isFleetModalOpen}
+        onClose={() => {
+          setIsFleetModalOpen(false);
+          setEditingFleetItem(null);
+        }}
+        title={editingFleetItem ? `Edit Data Armada: ${editingFleetItem.name}` : 'Tambah Armada Sekolah / Armada Sewa Baru'}
+        subtitle="Pengaturan inventaris kendaraan milik sekolah serta armada bus/kendaraan yang siap disewa beserta harga sewanya"
+        maxWidth="lg"
+      >
+        <form onSubmit={handleSaveFleetItem} className="space-y-4 text-xs">
+          {/* Switcher Kepemilikan Armada */}
+          <div>
+            <label className="block font-bold text-slate-700 mb-1.5">
+              Jenis Kepemilikan Armada <span className="text-rose-500">*</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2.5 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => {
+                  const isBus = fleetForm.category === 'Kendaraan Bus';
+                  setFleetForm(prev => ({
+                    ...prev,
+                    ownershipType: 'Milik Sekolah',
+                    vendorName: prev.vendorName === 'PO Mitra Pariwisata Lazuardi' ? 'Inventaris Yayasan Lazuardi' : prev.vendorName,
+                    rentalPeriod: prev.rentalPrice ? prev.rentalPeriod : 'Inventaris Sekolah',
+                    code: !editingFleetItem ? `${isBus ? 'BUS' : 'OPS'}-0${vehicleFleet.length + 1}` : prev.code
+                  }));
+                }}
+                className={`py-2.5 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  fleetForm.ownershipType === 'Milik Sekolah'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Armada Milik Sekolah (Internal)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const isBus = fleetForm.category === 'Kendaraan Bus';
+                  setFleetForm(prev => ({
+                    ...prev,
+                    ownershipType: 'Sewa / Vendor',
+                    vendorName: (!prev.vendorName || prev.vendorName === 'Inventaris Yayasan Lazuardi') ? 'PO Mitra Pariwisata Lazuardi' : prev.vendorName,
+                    rentalPrice: (!prev.rentalPrice || prev.rentalPrice === 0) ? (isBus ? 2500000 : 850000) : prev.rentalPrice,
+                    rentalPeriod: (!prev.rentalPeriod || prev.rentalPeriod === 'Inventaris Sekolah') ? 'Per Hari (Full Day)' : prev.rentalPeriod,
+                    code: !editingFleetItem ? `SEWA-${isBus ? 'BUS' : 'OPS'}-0${vehicleFleet.filter(f => f.ownershipType === 'Sewa / Vendor').length + 1}` : prev.code
+                  }));
+                }}
+                className={`py-2.5 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  fleetForm.ownershipType === 'Sewa / Vendor'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Bus className="w-4 h-4" />
+                <span>Armada Siap Disewa (Vendor / Sewa)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Kategori & Kode Armada */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Kategori Kendaraan *</label>
+              <select
+                value={fleetForm.category}
+                onChange={(e) => {
+                  const newCat = e.target.value as VehicleCategory;
+                  setFleetForm(prev => ({
+                    ...prev,
+                    category: newCat,
+                    capacity: newCat === 'Kendaraan Bus' ? 35 : 7
+                  }));
+                }}
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-800"
+              >
+                <option value="Kendaraan Operasional">Kendaraan Operasional</option>
+                <option value="Kendaraan Bus">Kendaraan Bus</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Kode Armada *</label>
+              <input
+                type="text"
+                required
+                value={fleetForm.code}
+                onChange={(e) => setFleetForm({ ...fleetForm, code: e.target.value.toUpperCase() })}
+                placeholder="OPS-05 / SEWA-BUS-01"
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg font-mono font-bold text-slate-900 uppercase"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Status Ketersediaan *</label>
+              <select
+                value={fleetForm.status}
+                onChange={(e) => setFleetForm({ ...fleetForm, status: e.target.value as any })}
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg font-semibold text-slate-800"
+              >
+                <option value="Tersedia">Tersedia (Siap Jalan)</option>
+                <option value="Sedang Bertugas">Sedang Bertugas</option>
+                <option value="Perawatan">Perawatan / Servis</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Nama Kendaraan, Plat Nomor & Kapasitas */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block font-bold text-slate-700 mb-1">
+                Nama / Tipe Bus atau Kendaraan <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={fleetForm.name}
+                onChange={(e) => setFleetForm({ ...fleetForm, name: e.target.value })}
+                placeholder="Contoh: Big Bus Pariwisata Jetbus 3+ 50 Seat / Kijang Innova Zenix"
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Nomor Polisi (Plat) <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={fleetForm.plateNumber}
+                onChange={(e) => setFleetForm({ ...fleetForm, plateNumber: e.target.value.toUpperCase() })}
+                placeholder="B 7011 LZR"
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg font-mono font-bold text-slate-900 uppercase"
+              />
+            </div>
+          </div>
+
+          {/* Panel Harga Sewa Setiap Bus / Kendaraan & Penyedia */}
+          <div className={`p-4 rounded-xl border space-y-3 ${
+            fleetForm.ownershipType === 'Sewa / Vendor'
+              ? 'bg-amber-50/70 border-amber-300'
+              : 'bg-slate-50 border-slate-200'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px]">
+                Pengaturan Harga Sewa Setiap Bus / Kendaraan &amp; Penyedia
+              </span>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                fleetForm.ownershipType === 'Sewa / Vendor'
+                  ? 'bg-amber-200 text-amber-950'
+                  : 'bg-blue-100 text-blue-800'
+              }`}>
+                {fleetForm.ownershipType === 'Sewa / Vendor' ? 'Armada Siap Disewa' : 'Inventaris Sekolah'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">
+                  Harga Sewa per Unit (Rp)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={fleetForm.rentalPrice}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/^0+/, '');
+                    setFleetForm({
+                      ...fleetForm,
+                      rentalPrice: cleaned === '' ? '' : parseInt(cleaned, 10)
+                    });
+                  }}
+                  className="w-full p-2.5 bg-white border border-slate-300 rounded-lg font-mono font-extrabold text-emerald-800 text-sm"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  {Number(fleetForm.rentalPrice) > 0
+                    ? `Format: Rp ${Number(fleetForm.rentalPrice).toLocaleString('id-ID')}`
+                    : 'Isi 0 jika gratis / inventaris sekolah'}
+                </span>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">
+                  Satuan / Durasi Sewa
+                </label>
+                <select
+                  value={fleetForm.rentalPeriod}
+                  onChange={(e) => setFleetForm({ ...fleetForm, rentalPeriod: e.target.value })}
+                  className="w-full p-2.5 bg-white border border-slate-300 rounded-lg font-semibold text-slate-800"
+                >
+                  <option value="Per Hari (Full Day)">Per Hari (Full Day)</option>
+                  <option value="Per Hari (12 Jam)">Per Hari (12 Jam)</option>
+                  <option value="Per Trip / PP">Per Trip / Pulang-Pergi</option>
+                  <option value="Per 6 Jam (Half Day)">Per 6 Jam (Half Day)</option>
+                  <option value="Inventaris Sekolah">Inventaris Sekolah (Internal)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">
+                  Nama PO Bus / Penyedia Armada
+                </label>
+                <input
+                  type="text"
+                  value={fleetForm.vendorName}
+                  onChange={(e) => setFleetForm({ ...fleetForm, vendorName: e.target.value })}
+                  placeholder="Contoh: PO Mitra Pariwisata / Inventaris"
+                  className="w-full p-2.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-800"
+                />
+              </div>
+            </div>
+
+            {/* Pilihan Cepat Harga Sewa */}
+            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+              <span className="text-[10px] font-bold text-slate-500 mr-1">Pilihan Cepat Tarif:</span>
+              {[
+                { label: 'Inventaris (Rp 0)', val: 0 },
+                { label: 'MPV Sewa (Rp 850rb)', val: 850000 },
+                { label: 'HiAce (Rp 1,65jt)', val: 1650000 },
+                { label: 'Medium Bus (Rp 2,45jt)', val: 2450000 },
+                { label: 'Big Bus 50 Seat (Rp 3,85jt)', val: 3850000 },
+                { label: 'Big Bus SHD Luxury (Rp 4,5jt)', val: 4500000 }
+              ].map(preset => (
+                <button
+                  key={preset.val}
+                  type="button"
+                  onClick={() => setFleetForm(prev => ({
+                    ...prev,
+                    rentalPrice: preset.val,
+                    rentalPeriod: preset.val === 0 ? 'Inventaris Sekolah' : (prev.rentalPeriod === 'Inventaris Sekolah' ? 'Per Hari (Full Day)' : prev.rentalPeriod)
+                  }))}
+                  className={`px-2 py-1 rounded text-[10px] font-bold border cursor-pointer transition-colors ${
+                    Number(fleetForm.rentalPrice) === preset.val
+                      ? 'bg-emerald-700 text-white border-emerald-700'
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Spesifikasi Teknis & Pengemudi */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Kapasitas Penumpang (Seat)</label>
+              <input
+                type="number"
+                placeholder="0"
+                value={fleetForm.capacity}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/^0+/, '');
+                  setFleetForm({ ...fleetForm, capacity: cleaned === '' ? '' : parseInt(cleaned, 10) });
+                }}
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Transmisi</label>
+              <select
+                value={fleetForm.transmission}
+                onChange={(e) => setFleetForm({ ...fleetForm, transmission: e.target.value as any })}
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+              >
+                <option value="Automatic">Automatic (AT)</option>
+                <option value="Manual">Manual (MT)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Bahan Bakar (BBM)</label>
+              <select
+                value={fleetForm.fuelType}
+                onChange={(e) => setFleetForm({ ...fleetForm, fuelType: e.target.value as any })}
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+              >
+                <option value="Bensin">Bensin</option>
+                <option value="Solar / Diesel">Solar / Diesel</option>
+                <option value="Hybrid">Hybrid / Listrik</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Nama Driver / Pengemudi</label>
+              <input
+                type="text"
+                value={fleetForm.driverName}
+                onChange={(e) => setFleetForm({ ...fleetForm, driverName: e.target.value })}
+                placeholder="Contoh: Pak Hendra / Driver Vendor"
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-800"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">No. HP / WhatsApp Driver</label>
+              <input
+                type="text"
+                value={fleetForm.driverPhone}
+                onChange={(e) => setFleetForm({ ...fleetForm, driverPhone: e.target.value })}
+                placeholder="0812-xxxx-xxxx"
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg font-mono text-slate-800"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">Catatan Spesifikasi / Fasilitas Armada</label>
+            <input
+              type="text"
+              value={fleetForm.notes}
+              onChange={(e) => setFleetForm({ ...fleetForm, notes: e.target.value })}
+              placeholder="Contoh: AC Dingin, Sabuk Pengaman, Audio Mic, Bagasi Luas..."
+              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-800"
+            />
+          </div>
+
+          <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsFleetModalOpen(false);
+                setEditingFleetItem(null);
+              }}
+              className="px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg cursor-pointer shadow-xs flex items-center gap-1.5"
+            >
+              <Check className="w-4 h-4" />
+              <span>{editingFleetItem ? 'Simpan Perubahan Armada' : 'Tambahkan Armada Baru'}</span>
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL KONFIRMASI HAPUS ARMADA */}
+      <Modal
+        isOpen={!!deleteFleetConfirm}
+        onClose={() => setDeleteFleetConfirm(null)}
+        title="Konfirmasi Hapus Unit Armada"
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 space-y-1">
+            <p className="font-bold text-sm">Hapus unit kendaraan/bus ini dari katalog armada?</p>
+            <p className="text-rose-700">
+              Armada <strong className="font-bold text-rose-950">[{deleteFleetConfirm?.code}] {deleteFleetConfirm?.name} ({deleteFleetConfirm?.plateNumber})</strong> akan dihapus dari sistem.
+            </p>
+          </div>
+
+          <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setDeleteFleetConfirm(null)}
+              className="px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmDeleteFleet}
+              className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg cursor-pointer shadow-xs"
+            >
+              Ya, Hapus Armada
             </button>
           </div>
         </div>

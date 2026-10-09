@@ -12,6 +12,7 @@ import { DashboardView } from './views/DashboardView';
 import { PhotocopyServiceView } from './views/PhotocopyServiceView';
 import { LaminatingServiceView } from './views/LaminatingServiceView';
 import { WaterServiceView } from './views/WaterServiceView';
+import { VehicleServiceView } from './views/VehicleServiceView';
 import { RequestsView } from './views/RequestsView';
 import { ReportsView } from './views/ReportsView';
 import { AuditLogView } from './views/AuditLogView';
@@ -53,6 +54,15 @@ const MainApp: React.FC = () => {
     if (currentTab === 'layanan_air') {
       return <WaterServiceView onOpenReceipt={handleOpenReceipt} />;
     }
+    if (currentTab === 'layanan_kendaraan') {
+      return <VehicleServiceView initialCategory="all" onOpenReceipt={handleOpenReceipt} />;
+    }
+    if (currentTab === 'layanan_kendaraan_ops') {
+      return <VehicleServiceView initialCategory="operasional" onOpenReceipt={handleOpenReceipt} />;
+    }
+    if (currentTab === 'layanan_kendaraan_bus') {
+      return <VehicleServiceView initialCategory="bus" onOpenReceipt={handleOpenReceipt} />;
+    }
 
     // Requests tabs
     if (currentTab === 'permintaan_all') {
@@ -73,6 +83,7 @@ const MainApp: React.FC = () => {
       const serviceMatch = currentTab === 'laporan_fotocopy' ? 'fotocopy' 
         : currentTab === 'laporan_laminating' ? 'laminating'
         : currentTab === 'laporan_air' ? 'air_galon'
+        : currentTab === 'laporan_kendaraan' ? 'kendaraan'
         : 'all';
       return <ReportsView initialServiceFilter={serviceMatch} />;
     }
@@ -89,6 +100,9 @@ const MainApp: React.FC = () => {
     }
     if (currentTab === 'pengaturan_unit') {
       return <SettingsView initialTab="units" />;
+    }
+    if (currentTab === 'pengaturan_armada') {
+      return <SettingsView initialTab="armada" />;
     }
     if (currentTab === 'pengaturan_system') {
       return <SettingsView initialTab="system" />;
