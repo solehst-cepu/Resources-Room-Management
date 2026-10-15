@@ -16,6 +16,7 @@ import {
   MasterDepartment,
   MasterSupplier,
   MasterLocation,
+  VehicleFleetItem,
 } from '../types';
 
 export interface DatabaseStatusInfo {
@@ -523,6 +524,44 @@ export const transformRoleConfigFromDB = (row: any): RoleConfig => ({
   permissions: row.permissions || {},
 });
 
+export const transformVehicleFleetToDB = (v: VehicleFleetItem) => ({
+  id: v.id,
+  code: v.code,
+  name: v.name,
+  category: v.category,
+  ownership_type: v.ownershipType || 'Milik Sekolah',
+  vendor_name: v.vendorName || (v.ownershipType === 'Sewa / Vendor' ? 'Vendor Rekanan' : 'Inventaris Yayasan Lazuardi'),
+  rental_price: Number(v.rentalPrice || 0),
+  rental_period: v.rentalPeriod || (v.ownershipType === 'Sewa / Vendor' ? 'Per Hari (Full Day)' : 'Inventaris Sekolah'),
+  plate_number: v.plateNumber,
+  capacity: Number(v.capacity || 7),
+  driver_name: v.driverName || '',
+  driver_phone: v.driverPhone || null,
+  transmission: v.transmission || 'Manual',
+  fuel_type: v.fuelType || 'Bensin',
+  status: v.status || 'Tersedia',
+  notes: v.notes || null,
+});
+
+export const transformVehicleFleetFromDB = (row: any): VehicleFleetItem => ({
+  id: row.id,
+  code: row.code,
+  name: row.name,
+  category: row.category,
+  ownershipType: row.ownership_type || 'Milik Sekolah',
+  vendorName: row.vendor_name || (row.ownership_type === 'Sewa / Vendor' ? 'Vendor Rekanan' : 'Inventaris Yayasan Lazuardi'),
+  rentalPrice: Number(row.rental_price || 0),
+  rentalPeriod: row.rental_period || (row.ownership_type === 'Sewa / Vendor' ? 'Per Hari (Full Day)' : 'Inventaris Sekolah'),
+  plateNumber: row.plate_number,
+  capacity: Number(row.capacity || 7),
+  driverName: row.driver_name || '',
+  driverPhone: row.driver_phone || undefined,
+  transmission: row.transmission || 'Manual',
+  fuelType: row.fuel_type || 'Bensin',
+  status: row.status || 'Tersedia',
+  notes: row.notes || undefined,
+});
+
 // -------------------------------------------------------------------------
 // DATABASE STATUS & HEALTH CHECK
 // -------------------------------------------------------------------------
@@ -540,6 +579,8 @@ export async function checkSupabaseHealth(): Promise<DatabaseStatusInfo> {
     'audit_logs',
     'app_notifications',
     'master_units',
+    'master_departments',
+    'vehicle_fleet',
   ];
 
   const tableDetails: Record<string, { exists: boolean; count: number }> = {};
@@ -778,6 +819,7 @@ export async function syncAllInitialDataToSupabase(data: {
   departments: MasterDepartment[];
   suppliers: MasterSupplier[];
   locations: MasterLocation[];
+  vehicleFleet?: VehicleFleetItem[];
 }): Promise<{ success: boolean; message: string; details: Record<string, number> }> {
   const details: Record<string, number> = {};
 
@@ -878,6 +920,13 @@ export async function syncAllInitialDataToSupabase(data: {
       const dbLocations = data.locations.map(transformLocationToDB);
       const { error } = await supabase.from('master_locations').upsert(dbLocations);
       if (!error) details['master_locations'] = dbLocations.length;
+    }
+
+    // 13. Vehicle Fleet (Armada Sekolah & Sewa Bus)
+    if (data.vehicleFleet && data.vehicleFleet.length > 0) {
+      const dbFleet = data.vehicleFleet.map(transformVehicleFleetToDB);
+      const { error } = await supabase.from('vehicle_fleet').upsert(dbFleet);
+      if (!error) details['vehicle_fleet'] = dbFleet.length;
     }
 
     const totalSynced = Object.values(details).reduce((a, b) => a + b, 0);

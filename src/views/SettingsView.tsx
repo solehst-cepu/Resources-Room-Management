@@ -97,6 +97,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     addVehicleFleet,
     updateVehicleFleet,
     deleteVehicleFleet,
+    syncVehicleFleetToSupabase,
     showToast
   } = useApp();
 
@@ -1949,14 +1950,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                  Status 14 Tabel Database Supabase
+                  Status 15 Tabel Database Supabase
                 </h4>
                 <p className="text-[11px] text-slate-500">
-                  Pemetaan tabel database PostgreSQL untuk semua entitas modul sistem Resources Room
+                  Pemetaan tabel database PostgreSQL untuk semua entitas modul sistem Resources Room (termasuk modul armada kendaraan)
                 </p>
               </div>
               <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
-                14 Tabel Terdefinisi
+                15 Tabel Terdefinisi
               </span>
             </div>
 
@@ -1971,6 +1972,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
+                <tr className="hover:bg-slate-50/60 bg-sky-50/20">
+                  <td className="p-3 font-mono font-bold text-sky-900 flex items-center gap-1.5">
+                    <Car className="w-3.5 h-3.5 text-sky-600" />
+                    <span>vehicle_fleet</span>
+                  </td>
+                  <td className="p-3 text-slate-800">
+                    <strong>Modul Kendaraan:</strong> Armada Milik Sekolah &amp; Katalog Bus/Mobil Sewa
+                  </td>
+                  <td className="p-3 font-bold text-slate-900">{vehicleFleet.length} Unit Armada</td>
+                  <td className="p-3 font-mono text-slate-500 text-[11px]">id (TEXT)</td>
+                  <td className="p-3 text-center">
+                    <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100">
+                      Realtime Live
+                    </span>
+                  </td>
+                </tr>
                 <tr className="hover:bg-slate-50/60">
                   <td className="p-3 font-mono font-bold text-blue-900">users</td>
                   <td className="p-3 text-slate-800">Master Pengguna &amp; Akun Guru/Staff</td>
@@ -1984,7 +2001,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
                 </tr>
                 <tr className="hover:bg-slate-50/60">
                   <td className="p-3 font-mono font-bold text-blue-900">service_requests</td>
-                  <td className="p-3 text-slate-800">Permintaan ATK, Seragam, Foto Copy, Laminating, Galon</td>
+                  <td className="p-3 text-slate-800">Permintaan Kendaraan, ATK, Seragam, Foto Copy, Laminating, Galon</td>
                   <td className="p-3 font-bold text-slate-900">{requests.length} Permintaan</td>
                   <td className="p-3 font-mono text-slate-500 text-[11px]">id (TEXT)</td>
                   <td className="p-3 text-center">
@@ -2792,7 +2809,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
                     Kelola, tambah, atau ubah (edit) spesifikasi armada milik sekolah serta daftar armada sewa beserta harga sewa per unitnya
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => syncVehicleFleetToSupabase()}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                    title="Simpan & sinkronkan seluruh armada ke database Supabase"
+                  >
+                    <Cloud className="w-3.5 h-3.5" />
+                    <span>Sinkronkan ke Database</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleOpenAddFleet('Milik Sekolah', 'Kendaraan Operasional')}

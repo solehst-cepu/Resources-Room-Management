@@ -104,6 +104,9 @@ const MainApp: React.FC = () => {
     if (currentTab === 'pengaturan_armada') {
       return <SettingsView initialTab="armada" />;
     }
+    if (currentTab === 'pengaturan_database') {
+      return <SettingsView initialTab="database" />;
+    }
     if (currentTab === 'pengaturan_system') {
       return <SettingsView initialTab="system" />;
     }

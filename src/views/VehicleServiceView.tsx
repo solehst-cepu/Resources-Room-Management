@@ -26,7 +26,8 @@ import {
   Fuel,
   FileText,
   Mail,
-  Wrench
+  Wrench,
+  Cloud
 } from 'lucide-react';
 import { StatusBadge, UrgencyBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -54,6 +55,7 @@ export const VehicleServiceView: React.FC<VehicleServiceViewProps> = ({
     vehicleFleet: fleet,
     addVehicleFleet,
     updateVehicleFleet,
+    syncVehicleFleetToSupabase,
     createRequest,
     updateRequestStatus,
     deleteRequest,
@@ -747,6 +749,15 @@ export const VehicleServiceView: React.FC<VehicleServiceViewProps> = ({
 
         {activeTab === 'fleet' && canManageOrDelete && (
           <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => syncVehicleFleetToSupabase()}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title="Simpan & sinkronkan seluruh armada ke database cloud"
+            >
+              <Cloud className="w-3.5 h-3.5" />
+              <span>Sinkronkan ke Database</span>
+            </button>
             <button
               type="button"
               onClick={() => handleOpenAddFleetModal('Milik Sekolah', 'Kendaraan Operasional')}

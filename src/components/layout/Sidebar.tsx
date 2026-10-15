@@ -362,6 +362,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </button>
 
                   <button
+                    onClick={() => handleNavClick('pengaturan_database')}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      currentTab === 'pengaturan_database' ? 'bg-blue-600 text-white font-semibold' : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <span>Database &amp; Cloud Sync</span>
+                  </button>
+
+                  <button
                     onClick={() => handleNavClick('pengaturan_system')}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                       currentTab === 'pengaturan_system' ? 'bg-blue-600 text-white font-semibold' : 'text-slate-300 hover:text-white hover:bg-slate-800'

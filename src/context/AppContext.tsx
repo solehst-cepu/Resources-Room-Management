@@ -93,6 +93,8 @@ import {
   transformWaterProviderLogFromDB,
   transformWaterOpnameRecordToDB,
   transformWaterOpnameRecordFromDB,
+  transformVehicleFleetToDB,
+  transformVehicleFleetFromDB,
   deleteRequestFromSupabase
 } from '../services/supabaseService';
 
@@ -266,6 +268,7 @@ interface AppContextType {
   addVehicleFleet: (item: Omit<VehicleFleetItem, 'id'>) => void;
   updateVehicleFleet: (id: string, data: Partial<VehicleFleetItem>) => void;
   deleteVehicleFleet: (id: string) => void;
+  syncVehicleFleetToSupabase: () => Promise<boolean>;
   
   // Notifications & Logs
   markNotificationAsRead: (id: string) => void;
@@ -456,7 +459,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             remoteDepts,
             remoteSuppliers,
             remoteLocations,
-            remoteRoles
+            remoteRoles,
+            remoteVehicleFleet
           ] = await Promise.all([
             fetchAllFromTable<any>('users', transformUserFromDB),
             fetchAllFromTable<any>('master_items', transformItemFromDB),
@@ -471,7 +475,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             fetchAllFromTable<any>('master_departments', transformDeptFromDB),
             fetchAllFromTable<any>('master_suppliers', transformSupplierFromDB),
             fetchAllFromTable<any>('master_locations', transformLocationFromDB),
-            fetchAllFromTable<any>('role_configs', transformRoleConfigFromDB)
+            fetchAllFromTable<any>('role_configs', transformRoleConfigFromDB),
+            fetchAllFromTable<VehicleFleetItem>('vehicle_fleet', transformVehicleFleetFromDB)
           ]);
 
           if (remoteUsers && remoteUsers.length > 0) {
@@ -533,6 +538,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (remoteRoles && remoteRoles.length > 0) {
             setRoleConfigs(remoteRoles);
           }
+
+          if (remoteVehicleFleet && remoteVehicleFleet.length > 0) {
+            setVehicleFleet(remoteVehicleFleet);
+          }
         } catch (err) {
           console.warn('[Supabase] Non-blocking initial fetch error:', err);
         }
@@ -553,14 +562,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         remoteWaterLocs,
         remoteWaterLogs,
         remoteWaterOpname,
-        remoteStockTx
+        remoteStockTx,
+        remoteVehicleFleet
       ] = await Promise.all([
         fetchAllFromTable<ServiceRequest>('service_requests', transformRequestFromDB),
         fetchAllFromTable<WaterInventory>('water_inventory', transformWaterInventoryFromDB),
         fetchAllFromTable<WaterLocation>('water_locations', transformWaterLocationFromDB),
         fetchAllFromTable<WaterProviderLog>('water_provider_logs', transformWaterProviderLogFromDB),
         fetchAllFromTable<WaterOpnameRecord>('water_opname_records', transformWaterOpnameRecordFromDB),
-        fetchAllFromTable<StockTransaction>('stock_transactions', transformStockTransactionFromDB)
+        fetchAllFromTable<StockTransaction>('stock_transactions', transformStockTransactionFromDB),
+        fetchAllFromTable<VehicleFleetItem>('vehicle_fleet', transformVehicleFleetFromDB)
       ]);
 
       if (remoteRequests) {
@@ -591,8 +602,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setStockTransactions(remoteStockTx.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
       }
 
+      if (remoteVehicleFleet && remoteVehicleFleet.length > 0) {
+        setVehicleFleet(remoteVehicleFleet);
+      }
+
       if (!silent) {
-        showToast('success', 'Sinkronisasi Selesai', 'Data transaksi & stok telah diperbarui dari database pusat.');
+        showToast('success', 'Sinkronisasi Selesai', 'Data transaksi, armada & stok telah diperbarui dari database pusat.');
       }
     } catch (err) {
       console.warn('[Supabase] Error during background fresh data fetch:', err);
@@ -750,6 +765,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
           }
         )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'vehicle_fleet' },
+          (payload) => {
+            if (payload.eventType === 'INSERT' && payload.new) {
+              const newFleet = transformVehicleFleetFromDB(payload.new);
+              setVehicleFleet(prev => prev.some(f => f.id === newFleet.id) ? prev.map(f => f.id === newFleet.id ? newFleet : f) : [...prev, newFleet]);
+            } else if (payload.eventType === 'UPDATE' && payload.new) {
+              const updatedFleet = transformVehicleFleetFromDB(payload.new);
+              setVehicleFleet(prev => prev.map(f => f.id === updatedFleet.id ? updatedFleet : f));
+            } else if (payload.eventType === 'DELETE' && payload.old) {
+              setVehicleFleet(prev => prev.filter(f => f.id !== payload.old.id));
+            }
+          }
+        )
         .subscribe();
 
       return () => {
@@ -780,7 +810,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         departments,
         suppliers,
         locations,
-        roleConfigs
+        roleConfigs,
+        vehicleFleet
       });
 
       if (result.success) {
@@ -2418,6 +2449,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       rentalPeriod: data.rentalPeriod || (data.ownershipType === 'Sewa / Vendor' ? 'Per Hari (Full Day)' : 'Inventaris Sekolah')
     };
     setVehicleFleet(prev => [...prev, newItem]);
+    upsertToTable('vehicle_fleet', transformVehicleFleetToDB(newItem)).catch(console.warn);
     addAuditLog(
       'Tambah Armada Kendaraan',
       'Pengaturan Armada',
@@ -2426,17 +2458,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(
       'success',
       'Armada Berhasil Ditambahkan',
-      `${newItem.name} (${newItem.plateNumber}) tersimpan di katalog armada`
+      `${newItem.name} (${newItem.plateNumber}) tersimpan di database armada`
     );
   };
 
   const updateVehicleFleet = (id: string, data: Partial<VehicleFleetItem>) => {
+    let updatedFleetItem: VehicleFleetItem | null = null;
     setVehicleFleet(prev => prev.map(item => {
       if (item.id === id) {
-        return { ...item, ...data };
+        updatedFleetItem = { ...item, ...data };
+        return updatedFleetItem;
       }
       return item;
     }));
+
+    if (updatedFleetItem) {
+      upsertToTable('vehicle_fleet', transformVehicleFleetToDB(updatedFleetItem)).catch(console.warn);
+
+      // Update in-flight service requests referencing this vehicle
+      setRequests(prev => prev.map(req => {
+        if (req.vehicleDetail?.vehicleId === id && req.status !== 'Selesai' && req.status !== 'Ditolak') {
+          const updatedVd = {
+            ...req.vehicleDetail,
+            vehicleName: data.name ?? req.vehicleDetail.vehicleName,
+            plateNumber: data.plateNumber ?? req.vehicleDetail.plateNumber,
+            rentalPrice: data.rentalPrice !== undefined ? data.rentalPrice : req.vehicleDetail.rentalPrice,
+            vendorName: data.vendorName ?? req.vehicleDetail.vendorName,
+            ownershipType: data.ownershipType ?? req.vehicleDetail.ownershipType,
+            rentalPeriod: data.rentalPeriod ?? req.vehicleDetail.rentalPeriod,
+            totalRentalCost: data.rentalPrice !== undefined ? (Number(data.rentalPrice) * (req.vehicleDetail.vehicleCount || 1)) : req.vehicleDetail.totalRentalCost
+          };
+          const updatedReq = { ...req, vehicleDetail: updatedVd };
+          upsertToTable('service_requests', transformRequestToDB(updatedReq)).catch(console.warn);
+          return updatedReq;
+        }
+        return req;
+      }));
+    }
+
     const target = vehicleFleet.find(i => i.id === id);
     addAuditLog(
       'Update Armada Kendaraan',
@@ -2446,7 +2505,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(
       'success',
       'Data Armada Diperbarui',
-      `Perubahan pada ${data.name || target?.name || 'unit armada'} berhasil disimpan`
+      `Perubahan pada ${data.name || target?.name || 'unit armada'} berhasil disimpan ke database`
     );
   };
 
@@ -2454,12 +2513,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = vehicleFleet.find(i => i.id === id);
     if (!target) return;
     setVehicleFleet(prev => prev.filter(i => i.id !== id));
+    deleteFromTable('vehicle_fleet', 'id', id).catch(console.warn);
     addAuditLog(
       'Hapus Armada Kendaraan',
       'Pengaturan Armada',
       `Menghapus armada ${target.name} (${target.plateNumber})`
     );
-    showToast('info', 'Armada Dihapus', `${target.name} (${target.plateNumber}) telah dihapus dari daftar armada`);
+    showToast('info', 'Armada Dihapus', `${target.name} (${target.plateNumber}) telah dihapus dari database armada`);
+  };
+
+  // Sync only vehicle fleet to Supabase
+  const syncVehicleFleetToSupabase = async (): Promise<boolean> => {
+    if (vehicleFleet.length === 0) return true;
+    try {
+      const dbFleet = vehicleFleet.map(transformVehicleFleetToDB);
+      const { error } = await supabase.from('vehicle_fleet').upsert(dbFleet);
+      if (!error) {
+        showToast('success', 'Sinkronisasi Database Berhasil', `${vehicleFleet.length} unit armada berhasil disinkronkan ke Supabase Cloud`);
+        return true;
+      } else {
+        console.warn('[Supabase] vehicle_fleet sync error:', error.message);
+        showToast('warning', 'Peringatan Database', `Tabel vehicle_fleet belum tersedia di database atau: ${error.message}`);
+        return false;
+      }
+    } catch (e: any) {
+      console.warn('[Supabase] vehicle_fleet sync exception:', e);
+      showToast('error', 'Gagal Sinkronisasi', e.message || 'Terjadi kesalahan jaringan');
+      return false;
+    }
   };
 
   // Notification read
@@ -2567,6 +2648,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addVehicleFleet,
       updateVehicleFleet,
       deleteVehicleFleet,
+      syncVehicleFleetToSupabase,
       markNotificationAsRead,
       markAllNotificationsAsRead,
       addAuditLog,

@@ -255,6 +255,28 @@ CREATE TABLE IF NOT EXISTS public.master_locations (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 17. TABEL MASTER ARMADA SEKOLAH & KENDARAAN SEWA (VEHICLE FLEET)
+CREATE TABLE IF NOT EXISTS public.vehicle_fleet (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL,
+  ownership_type TEXT NOT NULL DEFAULT 'Milik Sekolah',
+  vendor_name TEXT DEFAULT 'Inventaris Yayasan Lazuardi',
+  rental_price NUMERIC DEFAULT 0,
+  rental_period TEXT DEFAULT 'Inventaris Sekolah',
+  plate_number TEXT NOT NULL,
+  capacity NUMERIC DEFAULT 7,
+  driver_name TEXT,
+  driver_phone TEXT,
+  transmission TEXT DEFAULT 'Automatic',
+  fuel_type TEXT DEFAULT 'Bensin',
+  status TEXT DEFAULT 'Tersedia',
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ==============================================================================
 -- AKTIFKAN ROW LEVEL SECURITY (RLS) & IZIN AKSES ANONYMOUS
 -- ==============================================================================
@@ -279,6 +301,7 @@ ALTER TABLE IF EXISTS public.service_requests ADD COLUMN IF NOT EXISTS email_sen
 -- Pastikan event DELETE menyertakan data lengkap saat dipublikasikan melalui Realtime Supabase
 ALTER TABLE IF EXISTS public.service_requests REPLICA IDENTITY FULL;
 ALTER TABLE IF EXISTS public.stock_transactions REPLICA IDENTITY FULL;
+ALTER TABLE IF EXISTS public.vehicle_fleet REPLICA IDENTITY FULL;
 
 -- AKTIFKAN PUBLIKASI REALTIME SUPABASE UNTUK NOTIFIKASI DAN PERUBAHAN DATA LANGSUNG
 DO $$
@@ -297,7 +320,8 @@ BEGIN
       public.water_opname_records,
       public.service_requests, 
       public.stock_transactions, 
-      public.app_notifications;
+      public.app_notifications,
+      public.vehicle_fleet;
   END IF;
 EXCEPTION
   WHEN OTHERS THEN NULL;
