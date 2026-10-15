@@ -2463,40 +2463,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateVehicleFleet = (id: string, data: Partial<VehicleFleetItem>) => {
-    let updatedFleetItem: VehicleFleetItem | null = null;
-    setVehicleFleet(prev => prev.map(item => {
-      if (item.id === id) {
-        updatedFleetItem = { ...item, ...data };
-        return updatedFleetItem;
+    const target = vehicleFleet.find(i => i.id === id);
+    const updatedFleetItem: VehicleFleetItem = target
+      ? { ...target, ...data }
+      : ({
+          id,
+          code: '',
+          name: '',
+          category: 'Kendaraan Operasional',
+          ownershipType: 'Milik Sekolah',
+          vendorName: 'Inventaris Yayasan Lazuardi',
+          rentalPrice: 0,
+          rentalPeriod: 'Inventaris Sekolah',
+          plateNumber: '',
+          capacity: 7,
+          driverName: '',
+          status: 'Tersedia',
+          ...data
+        } as VehicleFleetItem);
+
+    setVehicleFleet(prev => prev.map(item => (item.id === id ? { ...item, ...data } : item)));
+
+    // Synchronously send upsert to Supabase
+    upsertToTable('vehicle_fleet', transformVehicleFleetToDB(updatedFleetItem)).catch(err => {
+      console.warn('[Supabase] Failed to update vehicle_fleet:', err);
+    });
+
+    // Update in-flight service requests referencing this vehicle
+    setRequests(prev => prev.map(req => {
+      if (req.vehicleDetail?.vehicleId === id && req.status !== 'Selesai' && req.status !== 'Ditolak') {
+        const updatedVd = {
+          ...req.vehicleDetail,
+          vehicleName: data.name ?? req.vehicleDetail.vehicleName,
+          plateNumber: data.plateNumber ?? req.vehicleDetail.plateNumber,
+          rentalPrice: data.rentalPrice !== undefined ? data.rentalPrice : req.vehicleDetail.rentalPrice,
+          vendorName: data.vendorName ?? req.vehicleDetail.vendorName,
+          ownershipType: data.ownershipType ?? req.vehicleDetail.ownershipType,
+          rentalPeriod: data.rentalPeriod ?? req.vehicleDetail.rentalPeriod,
+          totalRentalCost: data.rentalPrice !== undefined ? (Number(data.rentalPrice) * (req.vehicleDetail.vehicleCount || 1)) : req.vehicleDetail.totalRentalCost
+        };
+        const updatedReq = { ...req, vehicleDetail: updatedVd };
+        upsertToTable('service_requests', transformRequestToDB(updatedReq)).catch(console.warn);
+        return updatedReq;
       }
-      return item;
+      return req;
     }));
 
-    if (updatedFleetItem) {
-      upsertToTable('vehicle_fleet', transformVehicleFleetToDB(updatedFleetItem)).catch(console.warn);
-
-      // Update in-flight service requests referencing this vehicle
-      setRequests(prev => prev.map(req => {
-        if (req.vehicleDetail?.vehicleId === id && req.status !== 'Selesai' && req.status !== 'Ditolak') {
-          const updatedVd = {
-            ...req.vehicleDetail,
-            vehicleName: data.name ?? req.vehicleDetail.vehicleName,
-            plateNumber: data.plateNumber ?? req.vehicleDetail.plateNumber,
-            rentalPrice: data.rentalPrice !== undefined ? data.rentalPrice : req.vehicleDetail.rentalPrice,
-            vendorName: data.vendorName ?? req.vehicleDetail.vendorName,
-            ownershipType: data.ownershipType ?? req.vehicleDetail.ownershipType,
-            rentalPeriod: data.rentalPeriod ?? req.vehicleDetail.rentalPeriod,
-            totalRentalCost: data.rentalPrice !== undefined ? (Number(data.rentalPrice) * (req.vehicleDetail.vehicleCount || 1)) : req.vehicleDetail.totalRentalCost
-          };
-          const updatedReq = { ...req, vehicleDetail: updatedVd };
-          upsertToTable('service_requests', transformRequestToDB(updatedReq)).catch(console.warn);
-          return updatedReq;
-        }
-        return req;
-      }));
-    }
-
-    const target = vehicleFleet.find(i => i.id === id);
     addAuditLog(
       'Update Armada Kendaraan',
       'Pengaturan Armada',
@@ -2527,13 +2539,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (vehicleFleet.length === 0) return true;
     try {
       const dbFleet = vehicleFleet.map(transformVehicleFleetToDB);
-      const { error } = await supabase.from('vehicle_fleet').upsert(dbFleet);
-      if (!error) {
+      const success = await upsertToTable('vehicle_fleet', dbFleet);
+      if (success) {
         showToast('success', 'Sinkronisasi Database Berhasil', `${vehicleFleet.length} unit armada berhasil disinkronkan ke Supabase Cloud`);
+        // Refresh local connection info to update table counts
+        refreshSupabaseConnection();
         return true;
       } else {
-        console.warn('[Supabase] vehicle_fleet sync error:', error.message);
-        showToast('warning', 'Peringatan Database', `Tabel vehicle_fleet belum tersedia di database atau: ${error.message}`);
+        console.warn('[Supabase] vehicle_fleet sync failed');
+        showToast('warning', 'Peringatan Database', `Tabel vehicle_fleet belum tersedia di database atau gagal disinkronkan.`);
         return false;
       }
     } catch (e: any) {
