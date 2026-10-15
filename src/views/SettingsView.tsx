@@ -98,6 +98,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     updateVehicleFleet,
     deleteVehicleFleet,
     syncVehicleFleetToSupabase,
+    isVehicleFleetFixModalOpen,
+    setIsVehicleFleetFixModalOpen,
     showToast
   } = useApp();
 
@@ -1797,6 +1799,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
             </div>
           </div>
 
+          {/* Warning Banner if vehicle_fleet table is not yet created in Supabase */}
+          {dbInfo?.tableDetails?.['vehicle_fleet']?.exists === false && (
+            <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-amber-950 shadow-xs">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-amber-200 text-amber-900 rounded-xl shrink-0 mt-0.5">
+                  <AlertTriangle className="w-5 h-5 text-amber-800" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-sm text-amber-950">
+                    Perhatian: Tabel "vehicle_fleet" Belum Dibuat di Database Supabase
+                  </h4>
+                  <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                    Pemberitahuan <em>"Tabel vehicle_fleet belum tersedia"</em> muncul karena tabel baru ini belum dibuat di project Supabase Anda. Anda hanya perlu menyalin potongan skrip SQL ringkas dan klik <strong>RUN</strong> di Supabase SQL Editor (~5 detik).
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsVehicleFleetFixModalOpen(true)}
+                  className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-colors"
+                >
+                  <Wrench className="w-4 h-4" />
+                  <span>Perbaiki &amp; Salin Skrip SQL</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 3 Overview Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
@@ -1983,9 +2014,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
                   <td className="p-3 font-bold text-slate-900">{vehicleFleet.length} Unit Armada</td>
                   <td className="p-3 font-mono text-slate-500 text-[11px]">id (TEXT)</td>
                   <td className="p-3 text-center">
-                    <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100">
-                      Realtime Live
-                    </span>
+                    {dbInfo?.tableDetails?.['vehicle_fleet']?.exists ? (
+                      <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100">
+                        Realtime Live
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIsVehicleFleetFixModalOpen(true)}
+                        className="text-[10px] font-bold bg-amber-600 hover:bg-amber-700 text-white px-2.5 py-1 rounded-md shadow-2xs inline-flex items-center gap-1 cursor-pointer transition-colors"
+                        title="Klik untuk menyalin skrip SQL tabel vehicle_fleet"
+                      >
+                        <Wrench className="w-3 h-3" />
+                        <span>Belum Ada (Klik Solusi)</span>
+                      </button>
+                    )}
                   </td>
                 </tr>
                 <tr className="hover:bg-slate-50/60">
@@ -2658,6 +2701,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
 
         return (
           <div className="space-y-6">
+            {/* Warning Banner in Armada Tab if table is missing in Supabase */}
+            {dbInfo?.tableDetails?.['vehicle_fleet']?.exists === false && (
+              <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-950">
+                <div className="flex items-center gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span className="text-xs font-semibold">
+                    Tabel database <strong>vehicle_fleet</strong> belum dibuat di Supabase. Sinkronisasi multi-device membutuhkan tabel ini.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsVehicleFleetFixModalOpen(true)}
+                  className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg cursor-pointer shrink-0 shadow-2xs flex items-center gap-1"
+                >
+                  <Wrench className="w-3 h-3" />
+                  <span>Aktifkan Tabel (Salin SQL)</span>
+                </button>
+              </div>
+            )}
+
             {/* 4 KPI Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div
@@ -2819,6 +2882,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
                     <Cloud className="w-3.5 h-3.5" />
                     <span>Sinkronkan ke Database</span>
                   </button>
+                  {dbInfo?.tableDetails?.['vehicle_fleet']?.exists === false && (
+                    <button
+                      type="button"
+                      onClick={() => setIsVehicleFleetFixModalOpen(true)}
+                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                      title="Salin SQL dan aktifkan tabel vehicle_fleet"
+                    >
+                      <Wrench className="w-3.5 h-3.5" />
+                      <span>Perbaiki Tabel Database</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleOpenAddFleet('Milik Sekolah', 'Kendaraan Operasional')}

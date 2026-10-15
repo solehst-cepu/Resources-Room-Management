@@ -56,6 +56,9 @@ export const VehicleServiceView: React.FC<VehicleServiceViewProps> = ({
     addVehicleFleet,
     updateVehicleFleet,
     syncVehicleFleetToSupabase,
+    isVehicleFleetFixModalOpen,
+    setIsVehicleFleetFixModalOpen,
+    dbInfo,
     createRequest,
     updateRequestStatus,
     deleteRequest,
@@ -758,6 +761,17 @@ export const VehicleServiceView: React.FC<VehicleServiceViewProps> = ({
               <Cloud className="w-3.5 h-3.5" />
               <span>Sinkronkan ke Database</span>
             </button>
+            {dbInfo?.tableDetails?.['vehicle_fleet']?.exists === false && (
+              <button
+                type="button"
+                onClick={() => setIsVehicleFleetFixModalOpen(true)}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                title="Tabel vehicle_fleet belum aktif di Supabase. Klik untuk memperbaiki."
+              >
+                <Wrench className="w-3.5 h-3.5" />
+                <span>Perbaiki Tabel Supabase</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => handleOpenAddFleetModal('Milik Sekolah', 'Kendaraan Operasional')}
@@ -781,6 +795,31 @@ export const VehicleServiceView: React.FC<VehicleServiceViewProps> = ({
       {/* TAB CONTENT: FLEET CATALOG OR ORDER TABLE */}
       {activeTab === 'fleet' ? (
         <div className="space-y-6">
+          {/* Warning Banner in VehicleServiceView if table is missing in Supabase */}
+          {dbInfo?.tableDetails?.['vehicle_fleet']?.exists === false && (
+            <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-950 shadow-xs">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-extrabold text-sm text-amber-950">
+                    Tabel "vehicle_fleet" Belum Dibuat di Database Supabase
+                  </h4>
+                  <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                    Sinkronisasi data armada mobil operasional &amp; bus sewa memerlukan pembuatan tabel baru <code>vehicle_fleet</code> di Supabase. Salin skrip SQL singkat dan klik RUN di Supabase (~5 detik).
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsVehicleFleetFixModalOpen(true)}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl cursor-pointer shrink-0 shadow-2xs flex items-center gap-1.5 transition-colors"
+              >
+                <Wrench className="w-4 h-4" />
+                <span>Perbaiki &amp; Salin Skrip SQL</span>
+              </button>
+            </div>
+          )}
+
           {/* Section 1: Armada Milik Sekolah (Kendaraan Operasional & Bus Sekolah) */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">

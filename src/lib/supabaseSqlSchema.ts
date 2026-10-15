@@ -329,3 +329,48 @@ END $$;
 `;
 
 export const SUPABASE_CONFIG_SCHEMA_SQL = SUPABASE_SQL_SCHEMA;
+
+export const VEHICLE_FLEET_SOLO_SQL = `-- ==============================================================================
+-- SKRIP KHUSUS: MEMBUAT TABEL public.vehicle_fleet DI SUPABASE
+-- Jalankan skrip ini di SQL Editor Supabase:
+-- https://supabase.com/dashboard/project/bhovqcmodhsihzuylouz/sql/new
+-- ==============================================================================
+
+-- 1. Buat Tabel vehicle_fleet jika belum ada
+CREATE TABLE IF NOT EXISTS public.vehicle_fleet (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL,
+  ownership_type TEXT NOT NULL DEFAULT 'Milik Sekolah',
+  vendor_name TEXT DEFAULT 'Inventaris Yayasan Lazuardi',
+  rental_price NUMERIC DEFAULT 0,
+  rental_period TEXT DEFAULT 'Inventaris Sekolah',
+  plate_number TEXT NOT NULL,
+  capacity NUMERIC DEFAULT 7,
+  driver_name TEXT,
+  driver_phone TEXT,
+  transmission TEXT DEFAULT 'Automatic',
+  fuel_type TEXT DEFAULT 'Bensin',
+  status TEXT DEFAULT 'Tersedia',
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. Aktifkan Row Level Security (RLS) & Hak Akses Penuh
+ALTER TABLE public.vehicle_fleet ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Full Access" ON public.vehicle_fleet;
+CREATE POLICY "Public Full Access" ON public.vehicle_fleet FOR ALL USING (true) WITH CHECK (true);
+
+-- 3. Aktifkan Realtime Replica Identity
+ALTER TABLE IF EXISTS public.vehicle_fleet REPLICA IDENTITY FULL;
+
+-- 4. Tambahkan ke Publikasi Realtime
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.vehicle_fleet;
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END $$;
+`;

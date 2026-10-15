@@ -269,6 +269,8 @@ interface AppContextType {
   updateVehicleFleet: (id: string, data: Partial<VehicleFleetItem>) => void;
   deleteVehicleFleet: (id: string) => void;
   syncVehicleFleetToSupabase: () => Promise<boolean>;
+  isVehicleFleetFixModalOpen: boolean;
+  setIsVehicleFleetFixModalOpen: (val: boolean) => void;
   
   // Notifications & Logs
   markNotificationAsRead: (id: string) => void;
@@ -422,6 +424,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [supabaseStatus, setSupabaseStatus] = useState<SupabaseConnectionStatus>('connecting');
   const [dbInfo, setDbInfo] = useState<DatabaseStatusInfo | null>(null);
   const [isSyncingToSupabase, setIsSyncingToSupabase] = useState(false);
+  const [isVehicleFleetFixModalOpen, setIsVehicleFleetFixModalOpen] = useState(false);
 
   // Check Supabase Health & Auto-load data if available
   const refreshSupabaseConnection = async () => {
@@ -2547,11 +2550,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return true;
       } else {
         console.warn('[Supabase] vehicle_fleet sync failed');
-        showToast('warning', 'Peringatan Database', `Tabel vehicle_fleet belum tersedia di database atau gagal disinkronkan.`);
+        setIsVehicleFleetFixModalOpen(true);
+        showToast(
+          'warning', 
+          'Tabel vehicle_fleet Belum Dibuat di Supabase', 
+          'Jalankan skrip SQL singkat di Supabase untuk mengaktifkan tabel ini.',
+          {
+            label: 'Salin SQL & Perbaiki',
+            onClick: () => setIsVehicleFleetFixModalOpen(true)
+          }
+        );
         return false;
       }
     } catch (e: any) {
       console.warn('[Supabase] vehicle_fleet sync exception:', e);
+      setIsVehicleFleetFixModalOpen(true);
       showToast('error', 'Gagal Sinkronisasi', e.message || 'Terjadi kesalahan jaringan');
       return false;
     }
@@ -2663,6 +2676,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updateVehicleFleet,
       deleteVehicleFleet,
       syncVehicleFleetToSupabase,
+      isVehicleFleetFixModalOpen,
+      setIsVehicleFleetFixModalOpen,
       markNotificationAsRead,
       markAllNotificationsAsRead,
       addAuditLog,

@@ -6,6 +6,7 @@ import { ToastContainer } from './components/common/ToastContainer';
 import { ReceiptModal } from './components/common/ReceiptModal';
 import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { QuickRequestModal } from './components/common/QuickRequestModal';
+import { VehicleFleetFixModal } from './components/common/VehicleFleetFixModal';
 
 import { LoginView } from './views/LoginView';
 import { DashboardView } from './views/DashboardView';
@@ -176,6 +177,8 @@ const MainApp: React.FC = () => {
         onClose={() => setIsQuickRequestOpen(false)}
         onSelectService={handleNavigate}
       />
+
+      <VehicleFleetFixModal />
 
       <ToastContainer />
     </div>
