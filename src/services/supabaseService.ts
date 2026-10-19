@@ -18,6 +18,14 @@ import {
   MasterLocation,
   VehicleFleetItem,
 } from '../types';
+import {
+  getEgressCache,
+  setEgressCache,
+  invalidateEgressCache,
+  recordEgressMetric,
+  getEgressConfig,
+  CACHE_TTL,
+} from './egressCacheService';
 
 export interface DatabaseStatusInfo {
   connected: boolean;
@@ -566,7 +574,17 @@ export const transformVehicleFleetFromDB = (row: any): VehicleFleetItem => ({
 // DATABASE STATUS & HEALTH CHECK
 // -------------------------------------------------------------------------
 
-export async function checkSupabaseHealth(): Promise<DatabaseStatusInfo> {
+// Cached health check to prevent repetitive network scans (saves ~15 HTTP queries per call)
+let cachedHealthResult: DatabaseStatusInfo | null = null;
+let lastHealthCheckedTimestamp = 0;
+
+export async function checkSupabaseHealth(force: boolean = false): Promise<DatabaseStatusInfo> {
+  const now = Date.now();
+  if (!force && cachedHealthResult && (now - lastHealthCheckedTimestamp) < CACHE_TTL.HEALTH_CHECK) {
+    recordEgressMetric('hit', 1200);
+    return cachedHealthResult;
+  }
+
   const startTime = performance.now();
   const tableList = [
     'users',
@@ -588,18 +606,18 @@ export async function checkSupabaseHealth(): Promise<DatabaseStatusInfo> {
   let overallHasTables = false;
 
   try {
-    // Probe a quick query to users
+    recordEgressMetric('network', 150);
+    // Probe a quick HEAD query to users (0 bytes payload body, lightweight column id projection)
     const { data, error, count } = await supabase
       .from('users')
-      .select('*', { count: 'exact', head: true });
+      .select('id', { count: 'exact', head: true });
 
     const latency = Math.round(performance.now() - startTime);
 
     if (error && error.code === '42P01') {
-      // Table doesn't exist yet, but network and connection to Supabase is OK!
       overallConnected = true;
       overallHasTables = false;
-      return {
+      const res: DatabaseStatusInfo = {
         connected: true,
         hasTables: false,
         tableDetails,
@@ -607,6 +625,9 @@ export async function checkSupabaseHealth(): Promise<DatabaseStatusInfo> {
         latencyMs: latency,
         lastChecked: new Date().toLocaleTimeString('id-ID'),
       };
+      cachedHealthResult = res;
+      lastHealthCheckedTimestamp = Date.now();
+      return res;
     }
 
     if (error && !['42P01', 'PGRST116'].includes(error.code)) {
@@ -623,10 +644,10 @@ export async function checkSupabaseHealth(): Promise<DatabaseStatusInfo> {
     overallConnected = true;
     tableDetails['users'] = { exists: true, count: count || 0 };
 
-    // Check other core tables
+    // Check other core tables with lightweight HEAD queries
     for (const tbl of tableList.slice(1)) {
       try {
-        const res = await supabase.from(tbl).select('*', { count: 'exact', head: true });
+        const res = await supabase.from(tbl).select('id', { count: 'exact', head: true });
         if (!res.error) {
           tableDetails[tbl] = { exists: true, count: res.count || 0 };
         } else {
@@ -640,7 +661,7 @@ export async function checkSupabaseHealth(): Promise<DatabaseStatusInfo> {
     const existingCount = Object.values(tableDetails).filter((t) => t.exists).length;
     overallHasTables = existingCount > 0;
 
-    return {
+    const healthInfo: DatabaseStatusInfo = {
       connected: true,
       hasTables: overallHasTables,
       isConfigured: PROJECT_METADATA.isConfigured,
@@ -651,6 +672,10 @@ export async function checkSupabaseHealth(): Promise<DatabaseStatusInfo> {
       latencyMs: latency,
       lastChecked: new Date().toLocaleTimeString('id-ID'),
     };
+
+    cachedHealthResult = healthInfo;
+    lastHealthCheckedTimestamp = Date.now();
+    return healthInfo;
   } catch (err: any) {
     const latency = Math.round(performance.now() - startTime);
     return {
@@ -666,25 +691,185 @@ export async function checkSupabaseHealth(): Promise<DatabaseStatusInfo> {
 }
 
 // -------------------------------------------------------------------------
-// REUSABLE DB HELPERS
+// REUSABLE DB HELPERS (WITH SMART CACHING, QUERY LIMITING & PAGINATION)
 // -------------------------------------------------------------------------
+
+export interface FetchTableOptions<T> {
+  transformFn?: (row: any) => T;
+  limit?: number;
+  orderBy?: string;
+  ascending?: boolean;
+  select?: string;
+  useCache?: boolean;
+  cacheTtlMs?: number;
+  forceRefresh?: boolean;
+}
 
 export async function fetchAllFromTable<T>(
   tableName: string,
-  transformFn?: (row: any) => T
+  optionsOrFn?: ((row: any) => T) | FetchTableOptions<T>
 ): Promise<T[] | null> {
+  const options: FetchTableOptions<T> =
+    typeof optionsOrFn === 'function' ? { transformFn: optionsOrFn } : optionsOrFn || {};
+
+  const {
+    transformFn,
+    limit,
+    orderBy,
+    ascending = false,
+    select = '*',
+    useCache,
+    cacheTtlMs,
+    forceRefresh = false,
+  } = options;
+
+  // Identify master static tables that rarely change
+  const isMasterStatic = [
+    'master_units',
+    'master_departments',
+    'role_configs',
+    'master_suppliers',
+    'master_locations',
+  ].includes(tableName);
+  const isCatalog = ['master_items', 'uniform_items', 'vehicle_fleet', 'water_locations'].includes(tableName);
+  const shouldCache = useCache ?? (isMasterStatic || isCatalog);
+
+  // 1. Try reading from local Egress cache (0 egress bytes!)
+  if (shouldCache && !forceRefresh) {
+    const cached = getEgressCache<T[]>(tableName);
+    if (cached && !cached.isExpired && Array.isArray(cached.data) && cached.data.length > 0) {
+      recordEgressMetric('hit', 3500);
+      return cached.data;
+    }
+  }
+
   try {
-    const { data, error } = await supabase.from(tableName).select('*');
+    recordEgressMetric('network');
+    let query = supabase.from(tableName).select(select);
+
+    // Apply sorting
+    if (orderBy) {
+      query = query.order(orderBy, { ascending });
+    } else if (['service_requests', 'stock_transactions', 'audit_logs', 'app_notifications'].includes(tableName)) {
+      query = query.order('created_at', { ascending: false });
+    }
+
+    const egressCfg = getEgressConfig();
+
+    // Apply smart query limiting to reduce egress payload
+    if (limit) {
+      query = query.limit(limit);
+    } else if (
+      [
+        'service_requests',
+        'stock_transactions',
+        'audit_logs',
+        'app_notifications',
+        'water_provider_logs',
+        'water_opname_records',
+      ].includes(tableName)
+    ) {
+      // Configurable safety limit to prevent downloading unbounded historical logs
+      query = query.limit(egressCfg.maxRecentLogsLimit || 100);
+    }
+
+    const { data, error } = await query;
     if (error) {
-      // Table doesn't exist or permission denied
       return null;
     }
-    if (!transformFn) {
-      return (data || []) as unknown as T[];
+
+    const mapped = !transformFn ? ((data || []) as unknown as T[]) : (data || []).map(transformFn);
+
+    // Save to Egress cache
+    if (shouldCache && mapped && mapped.length > 0) {
+      const ttl = cacheTtlMs || (isMasterStatic ? CACHE_TTL.MASTER_STATIC : CACHE_TTL.CATALOG);
+      setEgressCache(tableName, mapped, ttl);
     }
-    return (data || []).map(transformFn);
+
+    return mapped;
   } catch {
     return null;
+  }
+}
+
+// Paginated Query Helper to minimize data transferred per request
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface FetchPaginatedOptions<T> {
+  page?: number;
+  pageSize?: number;
+  select?: string;
+  orderBy?: string;
+  ascending?: boolean;
+  filters?: Record<string, any>;
+  searchColumn?: string;
+  searchTerm?: string;
+  transformFn?: (row: any) => T;
+}
+
+export async function fetchPaginatedFromTable<T>(
+  tableName: string,
+  options: FetchPaginatedOptions<T> = {}
+): Promise<PaginatedResult<T>> {
+  const egressCfg = getEgressConfig();
+  const page = Math.max(1, options.page || 1);
+  const pageSize = Math.max(1, Math.min(100, options.pageSize || egressCfg.defaultPageSize || 25));
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+  const select = options.select || '*';
+  const ascending = options.ascending ?? false;
+
+  try {
+    recordEgressMetric('network');
+    let query = supabase.from(tableName).select(select, { count: 'exact' });
+
+    // Apply column filters
+    if (options.filters) {
+      Object.entries(options.filters).forEach(([col, val]) => {
+        if (val !== undefined && val !== null && val !== 'all' && val !== 'Semua') {
+          query = query.eq(col, val);
+        }
+      });
+    }
+
+    // Apply search filter if provided
+    if (options.searchColumn && options.searchTerm && options.searchTerm.trim()) {
+      query = query.ilike(options.searchColumn, `%${options.searchTerm.trim()}%`);
+    }
+
+    if (options.orderBy) {
+      query = query.order(options.orderBy, { ascending });
+    } else if (['service_requests', 'stock_transactions'].includes(tableName)) {
+      query = query.order('created_at', { ascending: false });
+    }
+
+    // Limit range (Pagination)
+    query = query.range(from, to);
+
+    const { data, count, error } = await query;
+    if (error) {
+      return { data: [], total: 0, page, pageSize, totalPages: 0 };
+    }
+
+    const total = count || 0;
+    const totalPages = Math.ceil(total / pageSize);
+    const mapped = options.transformFn ? (data || []).map(options.transformFn) : ((data || []) as unknown as T[]);
+
+    return {
+      data: mapped,
+      total,
+      page,
+      pageSize,
+      totalPages,
+    };
+  } catch {
+    return { data: [], total: 0, page, pageSize, totalPages: 0 };
   }
 }
 
@@ -714,6 +899,7 @@ export async function upsertToTable(tableName: string, data: any): Promise<boole
     try {
       const { error } = await supabase.from(tableName).upsert(currentPayload);
       if (!error) {
+        invalidateEgressCache(tableName);
         return true;
       }
 
@@ -752,6 +938,7 @@ export async function deleteFromTable(
       console.warn(`Supabase delete error on table [${tableName}]:`, error.message);
       return false;
     }
+    invalidateEgressCache(tableName);
     console.log(`[Supabase] Deleted from [${tableName}] where ${idColumn} = '${idValue}' (count: ${count})`);
     return true;
   } catch (e) {

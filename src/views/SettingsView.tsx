@@ -43,7 +43,12 @@ import {
   Car,
   Bus,
   Wrench,
-  Phone
+  Phone,
+  Layers,
+  Activity,
+  Filter,
+  Clock,
+  HardDrive
 } from 'lucide-react';
 import { RoleBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -100,12 +105,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     syncVehicleFleetToSupabase,
     isVehicleFleetFixModalOpen,
     setIsVehicleFleetFixModalOpen,
-    showToast
+    showToast,
+    egressSummary,
+    egressConfig,
+    cachedTables,
+    updateEgressConfig,
+    clearEgressCache,
+    resetEgressSavings,
+    refreshEgressStats
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'roles' | 'users' | 'units' | 'armada' | 'galon' | 'database' | 'system' | 'email_logs'>(initialTab);
   const [copiedSql, setCopiedSql] = useState(false);
   const [showSqlViewer, setShowSqlViewer] = useState(false);
+  const [activeEgressTab, setActiveEgressTab] = useState<'overview' | 'cache_list' | 'settings'>('overview');
 
   useEffect(() => {
     if (initialTab) {
@@ -2143,6 +2156,410 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          {/* SECTION: STRATEGI & MONITORING OPTIMASI EGRESS SUPABASE */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            {/* Header */}
+            <div className="p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="p-3 bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 rounded-xl mt-0.5">
+                  <Activity className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="text-base font-bold text-white">Strategi &amp; Monitoring Optimasi Egress Supabase</h4>
+                    <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2.5 py-0.5 rounded-full text-[11px] font-semibold flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      4 Pilar Optimasi Aktif
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                    Membatasi jumlah data yang dikirim, menerapkan server-side pagination, mengoptimalkan query, dan caching cerdas untuk data yang jarang berubah guna menghemat kuota gratis 2 GB/bulan Supabase Egress.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap shrink-0">
+                <button
+                  type="button"
+                  onClick={refreshEgressStats}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                  title="Perbarui angka penghematan"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Segarkan Metrik</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => clearEgressCache()}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                  title="Kosongkan seluruh cache master data lokal"
+                >
+                  <HardDrive className="w-3.5 h-3.5" />
+                  <span>Bersihkan Cache</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={resetEgressSavings}
+                  className="px-2.5 py-1.5 bg-slate-800/80 hover:bg-red-900/60 text-slate-300 hover:text-white text-xs rounded-lg border border-slate-700 transition-colors cursor-pointer"
+                  title="Reset penghitung statistik ke 0"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-tab Navigation */}
+            <div className="flex items-center gap-2 px-6 pt-4 border-b border-slate-100 bg-slate-50/50">
+              <button
+                type="button"
+                onClick={() => setActiveEgressTab('overview')}
+                className={`pb-3 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer ${
+                  activeEgressTab === 'overview'
+                    ? 'border-indigo-600 text-indigo-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Layers className="w-4 h-4" />
+                <span>Dashboard &amp; 4 Pilar Arsitektur</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveEgressTab('cache_list')}
+                className={`pb-3 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer ${
+                  activeEgressTab === 'cache_list'
+                    ? 'border-indigo-600 text-indigo-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <HardDrive className="w-4 h-4" />
+                <span>Tabel Master Ter-Cache ({cachedTables.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveEgressTab('settings')}
+                className={`pb-3 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors cursor-pointer ${
+                  activeEgressTab === 'settings'
+                    ? 'border-indigo-600 text-indigo-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Sliders className="w-4 h-4" />
+                <span>Konfigurasi Batas &amp; Kebijakan</span>
+              </button>
+            </div>
+
+            {/* SUB-TAB 1: OVERVIEW */}
+            {activeEgressTab === 'overview' && (
+              <div className="p-6 space-y-6">
+                {/* 4 Metric Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/40 space-y-1">
+                    <div className="flex items-center justify-between text-emerald-800 text-xs font-semibold">
+                      <span>Estimasi Egress Terhemat</span>
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <div className="text-2xl font-black text-emerald-950">
+                      {egressSummary.formattedBytesSaved}
+                    </div>
+                    <p className="text-[11px] text-emerald-700 leading-tight">
+                      Data tidak perlu diunduh dari Supabase cloud berkat cache lokal.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/40 space-y-1">
+                    <div className="flex items-center justify-between text-indigo-800 text-xs font-semibold">
+                      <span>Cache Hit Ratio</span>
+                      <Zap className="w-4 h-4 text-indigo-600" />
+                    </div>
+                    <div className="text-2xl font-black text-indigo-950">
+                      {egressSummary.hitRatioPercent}%
+                    </div>
+                    <p className="text-[11px] text-indigo-700 leading-tight">
+                      Persentase pembacaan data langsung dari memory internal browser.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/40 space-y-1">
+                    <div className="flex items-center justify-between text-blue-800 text-xs font-semibold">
+                      <span>Query Jaringan Dihindari</span>
+                      <Database className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div className="text-2xl font-black text-blue-950">
+                      {egressSummary.totalQueriesSaved} Kali
+                    </div>
+                    <p className="text-[11px] text-blue-700 leading-tight">
+                      Total permintaan read redundan yang dipangkas dari jaringan.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-1">
+                    <div className="flex items-center justify-between text-slate-700 text-xs font-semibold">
+                      <span>Network Requests Aktual</span>
+                      <Activity className="w-4 h-4 text-slate-500" />
+                    </div>
+                    <div className="text-2xl font-black text-slate-900">
+                      {egressSummary.networkRequests} Kali
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-tight">
+                      Hanya untuk mutasi insert/update atau fetch data baru yang belum ada di cache.
+                    </p>
+                  </div>
+                </div>
+
+                {/* The 4 Architectural Pillars Explained */}
+                <div className="space-y-3">
+                  <h5 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Implementasi 4 Pilar Penghematan Egress di Aplikasi Lazuardi GCS</span>
+                  </h5>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Pilar 1 */}
+                    <div className="p-4.5 rounded-xl border border-slate-200 bg-slate-50/40 space-y-2 hover:border-indigo-300 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-md bg-indigo-600 text-white font-extrabold text-[10px] flex items-center justify-center">1</span>
+                          Membatasi Jumlah Data yang Dikirim
+                        </span>
+                        <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                          Aktif (Limit {egressConfig.maxRecentLogsLimit})
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Alih-alih mengambil seluruh catatan transaksi historis yang membengkak seiring waktu, query tabel <code className="text-indigo-700 font-mono text-[11px]">service_requests</code>, <code className="text-indigo-700 font-mono text-[11px]">stock_transactions</code>, dan log diautentikasi dengan pembatasan otomatis maksimal <strong>{egressConfig.maxRecentLogsLimit} baris terbaru</strong>.
+                      </p>
+                      <div className="text-[11px] text-slate-500 pt-1 flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Mencegah browser menguras bandwidth saat membuka aplikasi berulang kali</span>
+                      </div>
+                    </div>
+
+                    {/* Pilar 2 */}
+                    <div className="p-4.5 rounded-xl border border-slate-200 bg-slate-50/40 space-y-2 hover:border-indigo-300 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-md bg-indigo-600 text-white font-extrabold text-[10px] flex items-center justify-center">2</span>
+                          Menggunakan Pagination (Server-Side Range)
+                        </span>
+                        <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                          Aktif ({egressConfig.defaultPageSize}/halaman)
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Untuk data berukuran besar, sistem menyediakan helper <code className="text-indigo-700 font-mono text-[11px]">fetchPaginatedFromTable</code> yang memanfaatkan header PostgREST <code className="text-indigo-700 font-mono text-[11px]">.range(from, to)</code>.
+                      </p>
+                      <div className="text-[11px] text-slate-500 pt-1 flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Data dikirim bertahap per lembar (halaman) hanya jika pengguna menavigasi ke halaman berikutnya</span>
+                      </div>
+                    </div>
+
+                    {/* Pilar 3 */}
+                    <div className="p-4.5 rounded-xl border border-slate-200 bg-slate-50/40 space-y-2 hover:border-indigo-300 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-md bg-indigo-600 text-white font-extrabold text-[10px] flex items-center justify-center">3</span>
+                          Mengoptimalkan Query (Zero-Body HEAD &amp; Real-time In-Memory)
+                        </span>
+                        <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                          Aktif (0 Bytes Payload)
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Pemeriksaan koneksi tabel memanfaatkan HTTP HEAD query <code className="text-indigo-700 font-mono text-[11px]">.select('id', &#123; head: true &#125;)</code> yang menghasilkan respons <strong>0 bytes payload</strong>. Selain itu, update Realtime WebSocket langsung memperbarui objek memori di browser tanpa perlu query ulang (re-fetch) seluruh tabel.
+                      </p>
+                      <div className="text-[11px] text-slate-500 pt-1 flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Menghilangkan 100% overhead egress pemeriksaan kesehatan berulang</span>
+                      </div>
+                    </div>
+
+                    {/* Pilar 4 */}
+                    <div className="p-4.5 rounded-xl border border-slate-200 bg-slate-50/40 space-y-2 hover:border-indigo-300 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-md bg-indigo-600 text-white font-extrabold text-[10px] flex items-center justify-center">4</span>
+                          Caching untuk Data yang Jarang Berubah
+                        </span>
+                        <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                          Aktif (TTL 4 - 24 Jam)
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Data statis seperti Master Unit, Departemen, Peran, Armada Kendaraan, dan Titik Galon disimpan di Local Egress Cache dengan TTL cerdas. Begitu ada mutasi (tambah/edit/hapus armada/barang), cache otomatis di-invalidate secara instan agar antar-device tetap sinkron.
+                      </p>
+                      <div className="text-[11px] text-slate-500 pt-1 flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Kecepatan buka instan 0ms dan bebas konsumsi egress pada reload rutin</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SUB-TAB 2: CACHE LIST */}
+            {activeEgressTab === 'cache_list' && (
+              <div className="p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h5 className="text-xs font-bold text-slate-900">Daftar Tabel Master yang Sedang Tersimpan di Cache Lokal</h5>
+                    <p className="text-xs text-slate-500">Tabel-tabel ini dibaca langsung dari browser untuk menghemat kuota egress Supabase</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => clearEgressCache()}
+                    className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Hapus Seluruh Cache</span>
+                  </button>
+                </div>
+
+                {cachedTables.length === 0 ? (
+                  <div className="p-8 text-center border border-dashed border-slate-200 rounded-xl bg-slate-50">
+                    <HardDrive className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                    <p className="text-xs font-bold text-slate-700">Belum ada data tabel yang tersimpan di cache lokal saat ini.</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Cache akan terisi secara otomatis saat aplikasi melakukan sinkronisasi data pertama kali.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                        <tr>
+                          <th className="p-3">Nama Tabel Supabase</th>
+                          <th className="p-3">Jumlah Item</th>
+                          <th className="p-3">Ukuran Memori</th>
+                          <th className="p-3">Masa Berlaku (TTL)</th>
+                          <th className="p-3">Status</th>
+                          <th className="p-3">Terakhir Diperbarui</th>
+                          <th className="p-3 text-center">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {cachedTables.map((entry) => (
+                          <tr key={entry.key} className="hover:bg-slate-50/60 font-medium">
+                            <td className="p-3 font-mono font-bold text-indigo-900 flex items-center gap-2">
+                              <Database className="w-3.5 h-3.5 text-indigo-500" />
+                              <span>{entry.tableName}</span>
+                            </td>
+                            <td className="p-3 text-slate-800">{entry.itemCount} Record</td>
+                            <td className="p-3 font-mono text-slate-600">{(entry.sizeBytes / 1024).toFixed(1)} KB</td>
+                            <td className="p-3 text-slate-600">
+                              {entry.ttlMs >= 24 * 3600 * 1000
+                                ? '24 Jam'
+                                : entry.ttlMs >= 4 * 3600 * 1000
+                                ? '4 Jam'
+                                : `${Math.round(entry.ttlMs / 60000)} Menit`}
+                            </td>
+                            <td className="p-3">
+                              {entry.isExpired ? (
+                                <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[10px] font-semibold">
+                                  Expired
+                                </span>
+                              ) : (
+                                <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 w-max">
+                                  <Check className="w-3 h-3" />
+                                  Fresh
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 text-slate-500 font-mono text-[11px]">{entry.lastUpdated}</td>
+                            <td className="p-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => clearEgressCache(entry.tableName)}
+                                className="p-1 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded cursor-pointer transition-colors"
+                                title={`Hapus cache ${entry.tableName}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SUB-TAB 3: SETTINGS */}
+            {activeEgressTab === 'settings' && (
+              <div className="p-6 space-y-5 max-w-2xl">
+                <div className="space-y-1">
+                  <h5 className="text-xs font-bold text-slate-900">Konfigurasi Pembatasan Payload &amp; Cache Policy</h5>
+                  <p className="text-xs text-slate-500">Sesuaikan batasan query untuk mengontrol pemakaian kuota sesuai kebutuhan operasional</p>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Option 1: Log Limit */}
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <strong className="text-xs font-bold text-slate-900 block">Batas Maksimal Pengambilan Riwayat (Log Limit)</strong>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Jumlah data transaksi terbaru yang diambil saat membuka aplikasi (Permintaan, Mutasi Stok, Audit Log)
+                      </p>
+                    </div>
+                    <select
+                      value={egressConfig.maxRecentLogsLimit}
+                      onChange={(e) => updateEgressConfig({ maxRecentLogsLimit: Number(e.target.value) })}
+                      className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold bg-white cursor-pointer shadow-2xs"
+                    >
+                      <option value="50">50 Baris (Sangat Hemat Egress)</option>
+                      <option value="100">100 Baris (Rekomendasi Standar)</option>
+                      <option value="200">200 Baris (Menengah)</option>
+                      <option value="500">500 Baris (Ukuran Besar)</option>
+                    </select>
+                  </div>
+
+                  {/* Option 2: Default Page Size */}
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <strong className="text-xs font-bold text-slate-900 block">Ukuran Halaman Pagination Default</strong>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Jumlah data per halaman yang dikirim saat menggunakan query paginasi server-side
+                      </p>
+                    </div>
+                    <select
+                      value={egressConfig.defaultPageSize}
+                      onChange={(e) => updateEgressConfig({ defaultPageSize: Number(e.target.value) })}
+                      className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold bg-white cursor-pointer shadow-2xs"
+                    >
+                      <option value="10">10 Data / Halaman (Ultra Ringan)</option>
+                      <option value="25">25 Data / Halaman (Rekomendasi)</option>
+                      <option value="50">50 Data / Halaman</option>
+                      <option value="100">100 Data / Halaman</option>
+                    </select>
+                  </div>
+
+                  {/* Option 3: Enable Cache */}
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center justify-between gap-3">
+                    <div>
+                      <strong className="text-xs font-bold text-slate-900 block">Aktifkan Smart Local Egress Caching</strong>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Simpan master data yang jarang berubah (Unit, Dept, Armada, Titik Galon) di cache browser
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateEgressConfig({ enableCache: !egressConfig.enableCache })}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                        egressConfig.enableCache ? 'bg-indigo-600' : 'bg-slate-300'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                          egressConfig.enableCache ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

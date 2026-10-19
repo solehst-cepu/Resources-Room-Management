@@ -97,6 +97,16 @@ import {
   transformVehicleFleetFromDB,
   deleteRequestFromSupabase
 } from '../services/supabaseService';
+import {
+  getEgressSavingsSummary,
+  resetEgressMetrics,
+  invalidateEgressCache,
+  getEgressConfig,
+  saveEgressConfig,
+  listEgressCachedTables,
+  EgressOptimizationConfig,
+  CachedTableInfo
+} from '../services/egressCacheService';
 
 const DELETED_REQUEST_KEY = 'sml_deleted_request_ids';
 
@@ -277,7 +287,14 @@ interface AppContextType {
   markAllNotificationsAsRead: () => void;
   addAuditLog: (action: string, module: string, details: string) => void;
   showToast: (type: ToastInfo['type'], title: string, message?: string, action?: ToastAction) => void;
-  removeToast: (id: string) => void;
+  // Egress & Bandwidth Optimization
+  egressSummary: ReturnType<typeof getEgressSavingsSummary>;
+  egressConfig: EgressOptimizationConfig;
+  cachedTables: CachedTableInfo[];
+  updateEgressConfig: (config: Partial<EgressOptimizationConfig>) => void;
+  clearEgressCache: (table?: string) => void;
+  resetEgressSavings: () => void;
+  refreshEgressStats: () => void;
   
   // Reset demo data
   resetAllData: () => void;
@@ -426,12 +443,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isSyncingToSupabase, setIsSyncingToSupabase] = useState(false);
   const [isVehicleFleetFixModalOpen, setIsVehicleFleetFixModalOpen] = useState(false);
 
+  // Egress State & Controls
+  const [egressSummary, setEgressSummary] = useState(() => getEgressSavingsSummary());
+  const [egressConfig, setEgressConfigState] = useState<EgressOptimizationConfig>(() => getEgressConfig());
+  const [cachedTables, setCachedTables] = useState<CachedTableInfo[]>(() => listEgressCachedTables());
+
+  const refreshEgressStats = () => {
+    setEgressSummary(getEgressSavingsSummary());
+    setCachedTables(listEgressCachedTables());
+  };
+
+  const updateEgressConfig = (config: Partial<EgressOptimizationConfig>) => {
+    const updated = saveEgressConfig(config);
+    setEgressConfigState(updated);
+    showToast('success', 'Konfigurasi Egress Disimpan', 'Kebijakan batas query & caching diperbarui.');
+  };
+
+  const clearEgressCache = (table?: string) => {
+    invalidateEgressCache(table);
+    refreshEgressStats();
+    showToast('info', 'Cache Egress Dibersihkan', table ? `Cache lokal tabel ${table} telah dihapus.` : 'Seluruh cache lokal master data telah dikosongkan.');
+  };
+
+  const resetEgressSavings = () => {
+    resetEgressMetrics();
+    refreshEgressStats();
+    showToast('info', 'Statistik Egress Direset', 'Penghitung penghematan data egress telah dimulai ulang.');
+  };
+
   // Check Supabase Health & Auto-load data if available
   const refreshSupabaseConnection = async () => {
     try {
       setSupabaseStatus('connecting');
       const health = await checkSupabaseHealth();
       setDbInfo(health);
+      refreshEgressStats();
 
       if (!health.isConfigured) {
         setSupabaseStatus('local_fallback');
@@ -2683,6 +2729,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addAuditLog,
       showToast,
       removeToast,
+      egressSummary,
+      egressConfig,
+      cachedTables,
+      updateEgressConfig,
+      clearEgressCache,
+      resetEgressSavings,
+      refreshEgressStats,
       resetAllData
     }}>
       {children}
