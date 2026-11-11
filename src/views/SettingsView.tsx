@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { User, UserRole, RoleConfig, RolePermissions, MasterUnit, MasterDepartment, WaterLocation, VehicleFleetItem, VehicleCategory, VehicleOwnershipType } from '../types';
+import { User, UserRole, RoleConfig, RolePermissions, MasterUnit, MasterDepartment, WaterLocation, VehicleFleetItem, VehicleCategory, VehicleOwnershipType, WaterProviderLog, WaterOpnameRecord } from '../types';
 import { 
   Settings, 
   Users, 
@@ -85,7 +85,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     deleteWaterLocation,
     updateInitialWaterAssets,
     addWaterProviderDelivery,
+    updateWaterProviderDelivery,
+    deleteWaterProviderDelivery,
     performWaterStockOpname,
+    updateWaterOpnameRecord,
+    deleteWaterOpnameRecord,
     addUser, 
     addUsers,
     updateUser, 
@@ -211,6 +215,61 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     status: 'Aktif' as 'Aktif' | 'Nonaktif' | 'Perbaikan Dispenser',
     notes: ''
   });
+
+  // User Role Check for Admin / Super Admin capabilities
+  const isAdminOrSuperAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+
+  // Provider Delivery Log Editing & Deletion States
+  const [editingProviderLog, setEditingProviderLog] = useState<WaterProviderLog | null>(null);
+  const [providerLogForm, setProviderLogForm] = useState<{
+    date: string;
+    deliveryNumber: string;
+    supplierName: string;
+    driverName: string;
+    filledReceived: number | '';
+    emptyReturned: number | '';
+    receivedBy: string;
+    notes: string;
+  }>({
+    date: '',
+    deliveryNumber: '',
+    supplierName: '',
+    driverName: '',
+    filledReceived: 0,
+    emptyReturned: 0,
+    receivedBy: '',
+    notes: ''
+  });
+  const [deleteProviderLogConfirm, setDeleteProviderLogConfirm] = useState<WaterProviderLog | null>(null);
+
+  // Stock Opname Record Editing & Deletion States
+  const [editingOpnameRecord, setEditingOpnameRecord] = useState<WaterOpnameRecord | null>(null);
+  const [opnameRecordForm, setOpnameRecordForm] = useState<{
+    date: string;
+    opnameNumber: string;
+    auditorName: string;
+    initialTotalAssets: number | '';
+    physicalFilled: number | '';
+    physicalEmpty: number | '';
+    physicalInRooms: number | '';
+    physicalDamaged: number | '';
+    physicalLost: number | '';
+    notes: string;
+    syncInventory: boolean;
+  }>({
+    date: '',
+    opnameNumber: '',
+    auditorName: '',
+    initialTotalAssets: 68,
+    physicalFilled: 0,
+    physicalEmpty: 0,
+    physicalInRooms: 0,
+    physicalDamaged: 0,
+    physicalLost: 0,
+    notes: '',
+    syncInventory: true
+  });
+  const [deleteOpnameConfirm, setDeleteOpnameConfirm] = useState<WaterOpnameRecord | null>(null);
 
   // Master Armada Sekolah & Armada Sewa States
   const [fleetSearch, setFleetSearch] = useState('');
@@ -686,6 +745,117 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
     if (!deleteWaterLocConfirm) return;
     deleteWaterLocation(deleteWaterLocConfirm.id);
     setDeleteWaterLocConfirm(null);
+  };
+
+  // Handlers for Provider Delivery Log Editing & Deletion
+  const handleOpenEditProviderLog = (log: WaterProviderLog) => {
+    setEditingProviderLog(log);
+    let formattedDate = '';
+    try {
+      const d = log.date ? new Date(log.date) : new Date();
+      formattedDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    } catch {
+      formattedDate = new Date().toISOString().slice(0, 16);
+    }
+    setProviderLogForm({
+      date: formattedDate,
+      deliveryNumber: log.deliveryNumber || '',
+      supplierName: log.supplierName || '',
+      driverName: log.driverName || '',
+      filledReceived: log.filledReceived ?? 0,
+      emptyReturned: log.emptyReturned ?? 0,
+      receivedBy: log.receivedBy || (currentUser?.name || ''),
+      notes: log.notes || ''
+    });
+  };
+
+  const handleSaveProviderLog = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProviderLog) return;
+    if (!providerLogForm.deliveryNumber.trim()) {
+      showToast('error', 'Validasi Gagal', 'Nomor surat jalan / faktur wajib diisi.');
+      return;
+    }
+    if (!providerLogForm.supplierName.trim()) {
+      showToast('error', 'Validasi Gagal', 'Nama distributor / provider wajib diisi.');
+      return;
+    }
+
+    updateWaterProviderDelivery(editingProviderLog.id, {
+      date: providerLogForm.date ? new Date(providerLogForm.date).toISOString() : editingProviderLog.date,
+      deliveryNumber: providerLogForm.deliveryNumber.trim(),
+      supplierName: providerLogForm.supplierName.trim(),
+      driverName: providerLogForm.driverName.trim() || undefined,
+      filledReceived: Number(providerLogForm.filledReceived) || 0,
+      emptyReturned: Number(providerLogForm.emptyReturned) || 0,
+      receivedBy: providerLogForm.receivedBy.trim() || (currentUser?.name || 'Admin RR'),
+      notes: providerLogForm.notes.trim() || undefined
+    });
+    setEditingProviderLog(null);
+  };
+
+  const handleConfirmDeleteProviderLog = () => {
+    if (!deleteProviderLogConfirm) return;
+    deleteWaterProviderDelivery(deleteProviderLogConfirm.id);
+    setDeleteProviderLogConfirm(null);
+  };
+
+  // Handlers for Stock Opname Record Editing & Deletion
+  const handleOpenEditOpname = (opn: WaterOpnameRecord) => {
+    setEditingOpnameRecord(opn);
+    let formattedDate = '';
+    try {
+      const d = opn.date ? new Date(opn.date) : new Date();
+      formattedDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    } catch {
+      formattedDate = new Date().toISOString().slice(0, 16);
+    }
+    setOpnameRecordForm({
+      date: formattedDate,
+      opnameNumber: opn.opnameNumber || '',
+      auditorName: opn.auditorName || (currentUser?.name ? `${currentUser.name} & Tim Logistik` : ''),
+      initialTotalAssets: opn.initialTotalAssets ?? (waterInventory.initialTotalAssets || 68),
+      physicalFilled: opn.physicalFilled ?? 0,
+      physicalEmpty: opn.physicalEmpty ?? 0,
+      physicalInRooms: opn.physicalInRooms ?? 0,
+      physicalDamaged: opn.physicalDamaged ?? 0,
+      physicalLost: opn.physicalLost ?? 0,
+      notes: opn.notes || '',
+      syncInventory: true
+    });
+  };
+
+  const handleSaveOpnameRecord = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOpnameRecord) return;
+    if (!opnameRecordForm.auditorName.trim()) {
+      showToast('error', 'Validasi Gagal', 'Nama auditor / pemeriksa fisik wajib diisi.');
+      return;
+    }
+
+    updateWaterOpnameRecord(
+      editingOpnameRecord.id,
+      {
+        date: opnameRecordForm.date ? new Date(opnameRecordForm.date).toISOString() : editingOpnameRecord.date,
+        opnameNumber: opnameRecordForm.opnameNumber.trim() || editingOpnameRecord.opnameNumber,
+        auditorName: opnameRecordForm.auditorName.trim(),
+        initialTotalAssets: Number(opnameRecordForm.initialTotalAssets) || 68,
+        physicalFilled: Number(opnameRecordForm.physicalFilled) || 0,
+        physicalEmpty: Number(opnameRecordForm.physicalEmpty) || 0,
+        physicalInRooms: Number(opnameRecordForm.physicalInRooms) || 0,
+        physicalDamaged: Number(opnameRecordForm.physicalDamaged) || 0,
+        physicalLost: Number(opnameRecordForm.physicalLost) || 0,
+        notes: opnameRecordForm.notes.trim() || undefined
+      },
+      opnameRecordForm.syncInventory
+    );
+    setEditingOpnameRecord(null);
+  };
+
+  const handleConfirmDeleteOpname = () => {
+    if (!deleteOpnameConfirm) return;
+    deleteWaterOpnameRecord(deleteOpnameConfirm.id);
+    setDeleteOpnameConfirm(null);
   };
 
   const handleExportWaterLocationsCSV = () => {
@@ -2979,7 +3149,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
           {/* SUBTAB 3: RIWAYAT PROVIDER */}
           {galonSubTab === 'provider' && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                     Riwayat Pengiriman &amp; Pertukaran Galon Provider
@@ -2988,7 +3158,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
                     Data saat galon isi datang dan berapa galon kosong yang dibawa oleh provider
                   </p>
                 </div>
-                <span className="text-xs text-slate-400 font-medium">{waterProviderLogs.length} catatan pengiriman</span>
+                <div className="flex items-center gap-2">
+                  {isAdminOrSuperAdmin && (
+                    <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md border border-blue-200 flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                      Akses Edit Admin Aktif
+                    </span>
+                  )}
+                  <span className="text-xs text-slate-400 font-medium">{waterProviderLogs.length} catatan pengiriman</span>
+                </div>
               </div>
 
               <div className="overflow-x-auto">
@@ -3002,26 +3180,59 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
                       <th className="p-3 text-center bg-emerald-50 text-emerald-900 font-bold">Galon Isi Datang (+)</th>
                       <th className="p-3 text-center bg-amber-50 text-amber-900 font-bold">Galon Kosong Dibawa (-)</th>
                       <th className="p-3">Penerima</th>
+                      <th className="p-3 text-center">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {waterProviderLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-slate-50/60">
-                        <td className="p-3 font-mono text-slate-500">
-                          {new Date(log.date).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
+                    {waterProviderLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="p-8 text-center text-slate-400">
+                          Belum ada catatan riwayat kedatangan provider galon
                         </td>
-                        <td className="p-3 font-mono font-bold text-blue-900">{log.deliveryNumber}</td>
-                        <td className="p-3 font-semibold text-slate-800">{log.supplierName}</td>
-                        <td className="p-3 text-slate-600">{log.driverName || '-'}</td>
-                        <td className="p-3 text-center font-bold text-emerald-700 bg-emerald-50/30">
-                          +{log.filledReceived} Galon
-                        </td>
-                        <td className="p-3 text-center font-bold text-amber-700 bg-amber-50/30">
-                          -{log.emptyReturned} Galon
-                        </td>
-                        <td className="p-3 text-slate-700">{log.receivedBy}</td>
                       </tr>
-                    ))}
+                    ) : (
+                      waterProviderLogs.map((log) => (
+                        <tr key={log.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="p-3 font-mono text-slate-500">
+                            {new Date(log.date).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
+                          </td>
+                          <td className="p-3 font-mono font-bold text-blue-900">{log.deliveryNumber}</td>
+                          <td className="p-3 font-semibold text-slate-800">{log.supplierName}</td>
+                          <td className="p-3 text-slate-600">{log.driverName || '-'}</td>
+                          <td className="p-3 text-center font-bold text-emerald-700 bg-emerald-50/30">
+                            +{log.filledReceived} Galon
+                          </td>
+                          <td className="p-3 text-center font-bold text-amber-700 bg-amber-50/30">
+                            -{log.emptyReturned} Galon
+                          </td>
+                          <td className="p-3 text-slate-700">{log.receivedBy}</td>
+                          <td className="p-3 text-center">
+                            {isAdminOrSuperAdmin ? (
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditProviderLog(log)}
+                                  className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors cursor-pointer"
+                                  title="Edit Riwayat Pengiriman Provider"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteProviderLogConfirm(log)}
+                                  className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg border border-slate-200 hover:border-red-300 transition-colors cursor-pointer"
+                                  title="Hapus Riwayat Pengiriman"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic">Hanya Baca</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -3031,7 +3242,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
           {/* SUBTAB 4: RIWAYAT OPNAME */}
           {galonSubTab === 'opname' && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                     Riwayat Audit Stock Opname Galon
@@ -3040,7 +3251,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
                     Hasil audit fisik berkala galon di gudang RR dan ruang-ruang sekolah
                   </p>
                 </div>
-                <span className="text-xs text-slate-400 font-medium">{waterOpnameRecords.length} audit</span>
+                <div className="flex items-center gap-2">
+                  {isAdminOrSuperAdmin && (
+                    <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md border border-blue-200 flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                      Akses Edit Admin Aktif
+                    </span>
+                  )}
+                  <span className="text-xs text-slate-400 font-medium">{waterOpnameRecords.length} audit</span>
+                </div>
               </div>
 
               <div className="overflow-x-auto">
@@ -3057,31 +3276,64 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
                       <th className="p-3 text-center font-bold">Total Fisik</th>
                       <th className="p-3 text-center">Selisih</th>
                       <th className="p-3">Catatan</th>
+                      <th className="p-3 text-center">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {waterOpnameRecords.map((opn) => (
-                      <tr key={opn.id} className="hover:bg-slate-50/60">
-                        <td className="p-3 font-mono font-bold text-slate-900">{opn.opnameNumber}</td>
-                        <td className="p-3 text-slate-500 font-mono text-[11px]">
-                          {new Date(opn.date).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
+                    {waterOpnameRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={11} className="p-8 text-center text-slate-400">
+                          Belum ada catatan riwayat audit stock opname galon
                         </td>
-                        <td className="p-3 font-semibold text-slate-800">{opn.auditorName}</td>
-                        <td className="p-3 text-center font-semibold text-emerald-800">{opn.physicalFilled}</td>
-                        <td className="p-3 text-center font-semibold text-amber-800">{opn.physicalEmpty}</td>
-                        <td className="p-3 text-center font-semibold text-blue-800">{opn.physicalInRooms}</td>
-                        <td className="p-3 text-center font-semibold text-rose-800">{opn.physicalDamaged + opn.physicalLost}</td>
-                        <td className="p-3 text-center font-extrabold text-cyan-900 bg-cyan-50/40">{opn.totalPhysical}</td>
-                        <td className="p-3 text-center font-bold">
-                          {opn.variance === 0 ? (
-                            <span className="text-emerald-700">0 (Klop)</span>
-                          ) : (
-                            <span className="text-rose-700">{opn.variance > 0 ? `+${opn.variance}` : opn.variance}</span>
-                          )}
-                        </td>
-                        <td className="p-3 text-slate-500 max-w-xs truncate">{opn.notes || '-'}</td>
                       </tr>
-                    ))}
+                    ) : (
+                      waterOpnameRecords.map((opn) => (
+                        <tr key={opn.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="p-3 font-mono font-bold text-slate-900">{opn.opnameNumber}</td>
+                          <td className="p-3 text-slate-500 font-mono text-[11px]">
+                            {new Date(opn.date).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
+                          </td>
+                          <td className="p-3 font-semibold text-slate-800">{opn.auditorName}</td>
+                          <td className="p-3 text-center font-semibold text-emerald-800">{opn.physicalFilled}</td>
+                          <td className="p-3 text-center font-semibold text-amber-800">{opn.physicalEmpty}</td>
+                          <td className="p-3 text-center font-semibold text-blue-800">{opn.physicalInRooms}</td>
+                          <td className="p-3 text-center font-semibold text-rose-800">{opn.physicalDamaged + opn.physicalLost}</td>
+                          <td className="p-3 text-center font-extrabold text-cyan-900 bg-cyan-50/40">{opn.totalPhysical}</td>
+                          <td className="p-3 text-center font-bold">
+                            {opn.variance === 0 ? (
+                              <span className="text-emerald-700">0 (Klop)</span>
+                            ) : (
+                              <span className="text-rose-700">{opn.variance > 0 ? `+${opn.variance}` : opn.variance}</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-slate-500 max-w-xs truncate">{opn.notes || '-'}</td>
+                          <td className="p-3 text-center">
+                            {isAdminOrSuperAdmin ? (
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditOpname(opn)}
+                                  className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors cursor-pointer"
+                                  title="Edit Riwayat Stock Opname"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteOpnameConfirm(opn)}
+                                  className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg border border-slate-200 hover:border-red-300 transition-colors cursor-pointer"
+                                  title="Hapus Riwayat Stock Opname"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic">Hanya Baca</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -4682,6 +4934,453 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
               className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg cursor-pointer shadow-xs"
             >
               Ya, Hapus Armada
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* MODAL EDIT RIWAYAT PENGIRIMAN PROVIDER GALON */}
+      <Modal
+        isOpen={!!editingProviderLog}
+        onClose={() => setEditingProviderLog(null)}
+        title="Edit Riwayat Pengiriman Galon Provider"
+        subtitle={`Surat Jalan / Faktur: ${editingProviderLog?.deliveryNumber}`}
+        maxWidth="lg"
+      >
+        <form onSubmit={handleSaveProviderLog} className="space-y-4 text-xs">
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 flex items-start gap-2.5">
+            <Info className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-relaxed">
+              Perubahan pada <strong>Galon Isi Datang</strong> dan <strong>Galon Kosong Dibawa</strong> akan secara otomatis menyesuaikan saldo inventori fisik galon di Resources Room.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Tanggal &amp; Waktu Pengiriman <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="datetime-local"
+                value={providerLogForm.date}
+                onChange={(e) => setProviderLogForm({ ...providerLogForm, date: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden bg-white"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                No. Surat Jalan / Faktur <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={providerLogForm.deliveryNumber}
+                onChange={(e) => setProviderLogForm({ ...providerLogForm, deliveryNumber: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold focus:ring-2 focus:ring-blue-500 focus:outline-hidden bg-white"
+                placeholder="Contoh: SJ-2026/05-88"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Nama Distributor / Provider <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={providerLogForm.supplierName}
+                onChange={(e) => setProviderLogForm({ ...providerLogForm, supplierName: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden bg-white"
+                placeholder="Contoh: CV Sumber Aqua Sejahtera"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Nama Driver / Pengantar
+              </label>
+              <input
+                type="text"
+                value={providerLogForm.driverName}
+                onChange={(e) => setProviderLogForm({ ...providerLogForm, driverName: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden bg-white"
+                placeholder="Contoh: Pak Herman"
+              />
+            </div>
+
+            <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1">
+              <label className="block text-[11px] font-bold text-emerald-950 mb-1 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                Galon Isi Datang (+) <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={providerLogForm.filledReceived}
+                onChange={(e) => setProviderLogForm({ ...providerLogForm, filledReceived: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) })}
+                className="w-full px-3 py-2 border border-emerald-300 rounded-lg text-xs font-extrabold text-emerald-900 bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                required
+              />
+              <span className="text-[10px] text-emerald-700 block">Menambah stok galon isi di gudang RR</span>
+            </div>
+
+            <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-xl space-y-1">
+              <label className="block text-[11px] font-bold text-amber-950 mb-1 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                Galon Kosong Dibawa (-) <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={providerLogForm.emptyReturned}
+                onChange={(e) => setProviderLogForm({ ...providerLogForm, emptyReturned: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) })}
+                className="w-full px-3 py-2 border border-amber-300 rounded-lg text-xs font-extrabold text-amber-900 bg-white focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
+                required
+              />
+              <span className="text-[10px] text-amber-700 block">Mengurangi stok galon kosong siap tukar di RR</span>
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Petugas Penerima (Resources Room)
+              </label>
+              <input
+                type="text"
+                value={providerLogForm.receivedBy}
+                onChange={(e) => setProviderLogForm({ ...providerLogForm, receivedBy: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden bg-white"
+                placeholder="Nama staf penerima"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Catatan / Keterangan Kondisi Galon
+              </label>
+              <textarea
+                value={providerLogForm.notes}
+                onChange={(e) => setProviderLogForm({ ...providerLogForm, notes: e.target.value })}
+                rows={2}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden bg-white"
+                placeholder="Kondisi galon bersih, segel utuh, dsb."
+              />
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditingProviderLog(null)}
+              className="px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg cursor-pointer shadow-xs flex items-center gap-1.5"
+            >
+              <Check className="w-4 h-4" />
+              <span>Simpan Perubahan Pengiriman</span>
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL HAPUS RIWAYAT PENGIRIMAN PROVIDER */}
+      <Modal
+        isOpen={!!deleteProviderLogConfirm}
+        onClose={() => setDeleteProviderLogConfirm(null)}
+        title="Konfirmasi Hapus Riwayat Pengiriman Provider"
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 space-y-1">
+            <p className="font-bold text-sm">Hapus catatan pengiriman provider ini?</p>
+            <p className="text-rose-700">
+              No. Surat Jalan <strong className="font-bold text-rose-950">{deleteProviderLogConfirm?.deliveryNumber}</strong> ({deleteProviderLogConfirm?.supplierName}) dengan +{deleteProviderLogConfirm?.filledReceived} galon isi &amp; -{deleteProviderLogConfirm?.emptyReturned} galon kosong akan dihapus.
+            </p>
+            <p className="text-[11px] text-rose-600 pt-1">
+              Saldo stok galon di gudang RR akan secara otomatis dikembalikan (*reverted*) ke sebelum pengiriman ini dilakukan.
+            </p>
+          </div>
+
+          <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setDeleteProviderLogConfirm(null)}
+              className="px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmDeleteProviderLog}
+              className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg cursor-pointer shadow-xs"
+            >
+              Ya, Hapus Catatan Ini
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* MODAL EDIT RIWAYAT STOCK OPNAME GALON */}
+      <Modal
+        isOpen={!!editingOpnameRecord}
+        onClose={() => setEditingOpnameRecord(null)}
+        title="Edit Riwayat Audit Stock Opname Galon"
+        subtitle={`Nomor Audit: ${editingOpnameRecord?.opnameNumber}`}
+        maxWidth="xl"
+      >
+        <form onSubmit={handleSaveOpnameRecord} className="space-y-4 text-xs">
+          {/* Live Reconciliation Banner */}
+          {(() => {
+            const filled = Number(opnameRecordForm.physicalFilled) || 0;
+            const empty = Number(opnameRecordForm.physicalEmpty) || 0;
+            const inRooms = Number(opnameRecordForm.physicalInRooms) || 0;
+            const damaged = Number(opnameRecordForm.physicalDamaged) || 0;
+            const lost = Number(opnameRecordForm.physicalLost) || 0;
+            const currentTotalPhysical = filled + empty + inRooms + damaged + lost;
+            const currentSystemTotal = editingOpnameRecord?.systemTotal || (waterInventory.filledGallons + waterInventory.emptyGallons + waterInventory.inDistribution + waterInventory.damagedGallons + waterInventory.lostGallons);
+            const currentVariance = currentTotalPhysical - currentSystemTotal;
+
+            return (
+              <div className="p-3.5 bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-xl shadow-xs space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold flex items-center gap-1.5 text-cyan-300">
+                    <ClipboardCheck className="w-4 h-4" />
+                    Kalkulasi Rekonsiliasi Hasil Audit Fisik
+                  </span>
+                  <span className="text-[11px] font-mono text-slate-300">
+                    Sistem Ref: {currentSystemTotal} Galon
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center pt-1 border-t border-slate-700/60">
+                  <div className="bg-slate-800/70 p-2 rounded-lg">
+                    <span className="text-[10px] text-slate-400 block">Total Fisik Terhitung</span>
+                    <strong className="text-base text-cyan-400 font-extrabold">{currentTotalPhysical} Galon</strong>
+                  </div>
+                  <div className="bg-slate-800/70 p-2 rounded-lg">
+                    <span className="text-[10px] text-slate-400 block">Modal Aset Awal</span>
+                    <strong className="text-base text-white font-extrabold">{opnameRecordForm.initialTotalAssets || 68} Galon</strong>
+                  </div>
+                  <div className={`p-2 rounded-lg ${currentVariance === 0 ? 'bg-emerald-950 border border-emerald-500/50' : 'bg-rose-950 border border-rose-500/50'}`}>
+                    <span className="text-[10px] text-slate-300 block">Selisih Fisik vs Sistem</span>
+                    <strong className={`text-base font-extrabold ${currentVariance === 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {currentVariance === 0 ? '0 (Klop)' : currentVariance > 0 ? `+${currentVariance}` : currentVariance}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Tanggal &amp; Waktu Audit <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="datetime-local"
+                value={opnameRecordForm.date}
+                onChange={(e) => setOpnameRecordForm({ ...opnameRecordForm, date: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                No. Dokumen Opname
+              </label>
+              <input
+                type="text"
+                value={opnameRecordForm.opnameNumber}
+                onChange={(e) => setOpnameRecordForm({ ...opnameRecordForm, opnameNumber: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Auditor / Tim Pemeriksa <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={opnameRecordForm.auditorName}
+                onChange={(e) => setOpnameRecordForm({ ...opnameRecordForm, auditorName: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                placeholder="Nama auditor / tim"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+            <h5 className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+              <Package className="w-3.5 h-3.5 text-blue-600" />
+              <span>Rincian Penghitungan Fisik Galon (Audit Counts)</span>
+            </h5>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-emerald-800 mb-1">
+                  Fisik Galon Isi di RR
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={opnameRecordForm.physicalFilled}
+                  onChange={(e) => setOpnameRecordForm({ ...opnameRecordForm, physicalFilled: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="w-full px-3 py-1.5 border border-emerald-300 rounded-lg text-xs font-bold text-emerald-900 bg-white"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-amber-800 mb-1">
+                  Fisik Galon Kosong di RR
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={opnameRecordForm.physicalEmpty}
+                  onChange={(e) => setOpnameRecordForm({ ...opnameRecordForm, physicalEmpty: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="w-full px-3 py-1.5 border border-amber-300 rounded-lg text-xs font-bold text-amber-900 bg-white"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-blue-800 mb-1">
+                  Terpasang di Ruangan
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={opnameRecordForm.physicalInRooms}
+                  onChange={(e) => setOpnameRecordForm({ ...opnameRecordForm, physicalInRooms: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="w-full px-3 py-1.5 border border-blue-300 rounded-lg text-xs font-bold text-blue-900 bg-white"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-rose-800 mb-1">
+                  Galon Rusak / Afkir
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={opnameRecordForm.physicalDamaged}
+                  onChange={(e) => setOpnameRecordForm({ ...opnameRecordForm, physicalDamaged: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="w-full px-3 py-1.5 border border-rose-300 rounded-lg text-xs font-bold text-rose-900 bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-rose-800 mb-1">
+                  Galon Hilang
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={opnameRecordForm.physicalLost}
+                  onChange={(e) => setOpnameRecordForm({ ...opnameRecordForm, physicalLost: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="w-full px-3 py-1.5 border border-rose-300 rounded-lg text-xs font-bold text-rose-900 bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-700 mb-1">
+                  Modal Aset Awal
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={opnameRecordForm.initialTotalAssets}
+                  onChange={(e) => setOpnameRecordForm({ ...opnameRecordForm, initialTotalAssets: e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1) })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 bg-white"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+              Catatan Hasil Audit
+            </label>
+            <textarea
+              value={opnameRecordForm.notes}
+              onChange={(e) => setOpnameRecordForm({ ...opnameRecordForm, notes: e.target.value })}
+              rows={2}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+              placeholder="Temuan fisik, lokasi galon hilang/rusak, dsb."
+            />
+          </div>
+
+          {/* Sync Inventory Checkbox */}
+          <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl flex items-start gap-2.5">
+            <input
+              type="checkbox"
+              id="settingsOpnameSyncCheck"
+              checked={opnameRecordForm.syncInventory}
+              onChange={(e) => setOpnameRecordForm({ ...opnameRecordForm, syncInventory: e.target.checked })}
+              className="mt-0.5 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
+            />
+            <label htmlFor="settingsOpnameSyncCheck" className="text-xs text-indigo-950 font-medium cursor-pointer">
+              <strong>Sinkronkan Saldo Inventori Aktif:</strong> Perbarui saldo inventori galon saat ini di master sistem agar langsung merefleksikan hasil audit fisik yang diedit ini.
+            </label>
+          </div>
+
+          <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditingOpnameRecord(null)}
+              className="px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg cursor-pointer shadow-xs flex items-center gap-1.5"
+            >
+              <Check className="w-4 h-4" />
+              <span>Simpan Perubahan Stock Opname</span>
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL HAPUS RIWAYAT STOCK OPNAME */}
+      <Modal
+        isOpen={!!deleteOpnameConfirm}
+        onClose={() => setDeleteOpnameConfirm(null)}
+        title="Konfirmasi Hapus Riwayat Audit Stock Opname"
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 space-y-1">
+            <p className="font-bold text-sm">Hapus catatan audit stock opname ini?</p>
+            <p className="text-rose-700">
+              Dokumen Audit <strong className="font-bold text-rose-950">{deleteOpnameConfirm?.opnameNumber}</strong> tanggal {deleteOpnameConfirm?.date ? new Date(deleteOpnameConfirm.date).toLocaleDateString('id-ID') : ''} oleh <strong>{deleteOpnameConfirm?.auditorName}</strong> (Total Fisik: {deleteOpnameConfirm?.totalPhysical} galon) akan dihapus dari riwayat.
+            </p>
+          </div>
+
+          <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setDeleteOpnameConfirm(null)}
+              className="px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmDeleteOpname}
+              className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg cursor-pointer shadow-xs"
+            >
+              Ya, Hapus Audit Opname Ini
             </button>
           </div>
         </div>

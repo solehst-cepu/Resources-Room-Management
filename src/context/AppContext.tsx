@@ -247,6 +247,8 @@ interface AppContextType {
     }
   ) => void;
   addWaterProviderDelivery: (log: Omit<WaterProviderLog, 'id'>) => void;
+  updateWaterProviderDelivery: (id: string, logData: Partial<WaterProviderLog>) => void;
+  deleteWaterProviderDelivery: (id: string) => void;
   performWaterStockOpname: (data: {
     auditorName: string;
     initialTotalAssets: number;
@@ -257,6 +259,8 @@ interface AppContextType {
     physicalLost: number;
     notes?: string;
   }) => void;
+  updateWaterOpnameRecord: (id: string, opnData: Partial<WaterOpnameRecord>, shouldSyncInventory?: boolean) => void;
+  deleteWaterOpnameRecord: (id: string) => void;
   updateInitialWaterAssets: (total: number) => void;
   
   // Master Setup & Roles
@@ -2211,6 +2215,81 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const updateWaterProviderDelivery = (id: string, logData: Partial<WaterProviderLog>) => {
+    const existingLog = waterProviderLogs.find(l => l.id === id);
+    if (!existingLog) return;
+
+    const oldFilled = Number(existingLog.filledReceived) || 0;
+    const oldEmpty = Number(existingLog.emptyReturned) || 0;
+    const newFilled = logData.filledReceived !== undefined ? Number(logData.filledReceived) : oldFilled;
+    const newEmpty = logData.emptyReturned !== undefined ? Number(logData.emptyReturned) : oldEmpty;
+    const deltaFilled = newFilled - oldFilled;
+    const deltaEmpty = newEmpty - oldEmpty;
+
+    const updatedLog: WaterProviderLog = {
+      ...existingLog,
+      ...logData,
+      id,
+      filledReceived: newFilled,
+      emptyReturned: newEmpty,
+    };
+
+    setWaterProviderLogs(prev => prev.map(l => l.id === id ? updatedLog : l));
+    upsertToTable('water_provider_logs', transformWaterProviderLogToDB(updatedLog)).catch(console.warn);
+
+    // Adjust inventory if counts changed
+    if (deltaFilled !== 0 || deltaEmpty !== 0) {
+      const updatedInv = {
+        ...waterInventory,
+        filledGallons: Math.max(0, waterInventory.filledGallons + deltaFilled),
+        emptyGallons: Math.max(0, waterInventory.emptyGallons - deltaEmpty)
+      };
+      setWaterInventory(updatedInv);
+      upsertToTable('water_inventory', transformWaterInventoryToDB(updatedInv)).catch(console.warn);
+    }
+
+    addAuditLog(
+      'Edit Pengiriman Galon Provider',
+      'Air Galon',
+      `Memperbarui data pengiriman ${updatedLog.deliveryNumber} (${updatedLog.supplierName}): Masuk ${updatedLog.filledReceived} galon isi, Ditukar ${updatedLog.emptyReturned} galon kosong`
+    );
+
+    showToast(
+      'success',
+      'Riwayat Pengiriman Diperbarui',
+      `Data surat jalan ${updatedLog.deliveryNumber} berhasil diperbarui.`
+    );
+  };
+
+  const deleteWaterProviderDelivery = (id: string) => {
+    const existingLog = waterProviderLogs.find(l => l.id === id);
+    if (!existingLog) return;
+
+    // Revert inventory changes made by this delivery
+    const updatedInv = {
+      ...waterInventory,
+      filledGallons: Math.max(0, waterInventory.filledGallons - existingLog.filledReceived),
+      emptyGallons: Math.max(0, waterInventory.emptyGallons + existingLog.emptyReturned)
+    };
+    setWaterInventory(updatedInv);
+    upsertToTable('water_inventory', transformWaterInventoryToDB(updatedInv)).catch(console.warn);
+
+    setWaterProviderLogs(prev => prev.filter(l => l.id !== id));
+    deleteFromTable('water_provider_logs', 'id', id).catch(console.warn);
+
+    addAuditLog(
+      'Hapus Pengiriman Galon Provider',
+      'Air Galon',
+      `Menghapus riwayat pengiriman ${existingLog.deliveryNumber} (${existingLog.supplierName})`
+    );
+
+    showToast(
+      'info',
+      'Pengiriman Dihapus',
+      `Riwayat surat jalan ${existingLog.deliveryNumber} telah dihapus & stok galon disesuaikan.`
+    );
+  };
+
   const performWaterStockOpname = (data: {
     auditorName: string;
     initialTotalAssets: number;
@@ -2269,6 +2348,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'success',
       'Stock Opname Galon Tersimpan',
       `Hasil audit fisik (${totalPhysical} galon) berhasil disinkronkan ke master inventori`
+    );
+  };
+
+  const updateWaterOpnameRecord = (
+    id: string,
+    data: Partial<WaterOpnameRecord>,
+    syncInventory: boolean = true
+  ) => {
+    const existing = waterOpnameRecords.find(o => o.id === id);
+    if (!existing) return;
+
+    const physicalFilled = data.physicalFilled !== undefined ? Number(data.physicalFilled) : existing.physicalFilled;
+    const physicalEmpty = data.physicalEmpty !== undefined ? Number(data.physicalEmpty) : existing.physicalEmpty;
+    const physicalInRooms = data.physicalInRooms !== undefined ? Number(data.physicalInRooms) : existing.physicalInRooms;
+    const physicalDamaged = data.physicalDamaged !== undefined ? Number(data.physicalDamaged) : existing.physicalDamaged;
+    const physicalLost = data.physicalLost !== undefined ? Number(data.physicalLost) : existing.physicalLost;
+    const initialTotalAssets = data.initialTotalAssets !== undefined ? Number(data.initialTotalAssets) : existing.initialTotalAssets;
+
+    const totalPhysical = physicalFilled + physicalEmpty + physicalInRooms + physicalDamaged + physicalLost;
+    const systemTotal = data.systemTotal !== undefined ? Number(data.systemTotal) : existing.systemTotal;
+    const variance = totalPhysical - systemTotal;
+
+    const updatedOpn: WaterOpnameRecord = {
+      ...existing,
+      ...data,
+      id,
+      initialTotalAssets,
+      physicalFilled,
+      physicalEmpty,
+      physicalInRooms,
+      physicalDamaged,
+      physicalLost,
+      totalPhysical,
+      variance
+    };
+
+    setWaterOpnameRecords(prev => prev.map(o => o.id === id ? updatedOpn : o));
+    upsertToTable('water_opname_records', transformWaterOpnameRecordToDB(updatedOpn)).catch(console.warn);
+
+    if (syncInventory) {
+      const updatedInv: WaterInventory = {
+        ...waterInventory,
+        initialTotalAssets,
+        filledGallons: physicalFilled,
+        emptyGallons: physicalEmpty,
+        inDistribution: physicalInRooms,
+        damagedGallons: physicalDamaged,
+        lostGallons: physicalLost,
+        lastOpnameDate: (data.date || existing.date || new Date().toISOString()).slice(0, 10),
+        lastOpnameBy: data.auditorName || existing.auditorName
+      };
+      setWaterInventory(updatedInv);
+      upsertToTable('water_inventory', transformWaterInventoryToDB(updatedInv)).catch(console.warn);
+    }
+
+    addAuditLog(
+      'Edit Stock Opname Galon',
+      'Air Galon',
+      `Memperbarui hasil audit ${updatedOpn.opnameNumber} oleh ${updatedOpn.auditorName}: Total Fisik=${totalPhysical}, Selisih=${variance >= 0 ? `+${variance}` : variance}`
+    );
+
+    showToast(
+      'success',
+      'Data Stock Opname Diperbarui',
+      `Hasil audit ${updatedOpn.opnameNumber} berhasil diperbarui.`
+    );
+  };
+
+  const deleteWaterOpnameRecord = (id: string) => {
+    const existing = waterOpnameRecords.find(o => o.id === id);
+    if (!existing) return;
+
+    setWaterOpnameRecords(prev => prev.filter(o => o.id !== id));
+    deleteFromTable('water_opname_records', 'id', id).catch(console.warn);
+
+    addAuditLog(
+      'Hapus Stock Opname Galon',
+      'Air Galon',
+      `Menghapus riwayat audit ${existing.opnameNumber}`
+    );
+
+    showToast(
+      'info',
+      'Audit Opname Dihapus',
+      `Riwayat audit ${existing.opnameNumber} telah dihapus.`
     );
   };
 
@@ -2701,7 +2865,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updateWaterInventory,
       updateWaterTransaction,
       addWaterProviderDelivery,
+      updateWaterProviderDelivery,
+      deleteWaterProviderDelivery,
       performWaterStockOpname,
+      updateWaterOpnameRecord,
+      deleteWaterOpnameRecord,
       updateInitialWaterAssets,
       addUser,
       addUsers,
