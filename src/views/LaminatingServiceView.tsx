@@ -31,6 +31,7 @@ import { Modal } from '../components/common/Modal';
 import { UserSearchSelect } from '../components/common/UserSearchSelect';
 import { TrackOrderModal } from '../components/common/TrackOrderModal';
 import { EmailReportModal } from '../components/common/EmailReportModal';
+import { compressImageToDataUrl } from '../utils/imageUtils';
 
 interface LaminatingServiceViewProps {
   onOpenReceipt: (req: ServiceRequest) => void;
@@ -183,7 +184,7 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
   const laminatingRequests = requests.filter(r => r.serviceType === 'laminating');
 
   // Handle file selection / photo upload
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
@@ -191,11 +192,16 @@ export const LaminatingServiceView: React.FC<LaminatingServiceViewProps> = ({ on
       setFileSize(`${sizeMB} MB`);
 
       if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = (uploadEvent) => {
-          setPhotoPreview(uploadEvent.target?.result as string);
-        };
-        reader.readAsDataURL(file);
+        try {
+          const compressedDataUrl = await compressImageToDataUrl(file, 1280, 0.72);
+          setPhotoPreview(compressedDataUrl);
+        } catch {
+          const reader = new FileReader();
+          reader.onload = (uploadEvent) => {
+            setPhotoPreview(uploadEvent.target?.result as string);
+          };
+          reader.readAsDataURL(file);
+        }
       } else {
         setPhotoPreview(null);
       }

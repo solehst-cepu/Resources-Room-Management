@@ -217,7 +217,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'roles'
   });
 
   // User Role Check for Admin / Super Admin capabilities
-  const isAdminOrSuperAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+  const isAdminOrSuperAdmin =
+    currentUser?.role === 'super_admin' ||
+    currentUser?.role === 'admin_rr' ||
+    (currentUser?.role as string) === 'admin';
 
   // Provider Delivery Log Editing & Deletion States
   const [editingProviderLog, setEditingProviderLog] = useState<WaterProviderLog | null>(null);

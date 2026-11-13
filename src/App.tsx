@@ -185,11 +185,78 @@ const MainApp: React.FC = () => {
   );
 };
 
+class AppErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; errorMessage: string }
+> {
+  declare props: { children: React.ReactNode };
+  declare state: { hasError: boolean; errorMessage: string };
+  declare setState: (state: Partial<{ hasError: boolean; errorMessage: string }>) => void;
+
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, errorMessage: '' };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, errorMessage: error?.message || 'Terjadi kesalahan sistem.' };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[AppErrorBoundary] Uncaught UI error:', error, info);
+  }
+
+  handleRecover = () => {
+    try {
+      localStorage.removeItem('lazuardi_rr_requests');
+    } catch {
+      // ignore
+    }
+    this.setState({ hasError: false, errorMessage: '' });
+    window.location.reload();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6 font-sans">
+          <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 shadow-lg p-6 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto font-bold text-xl">
+              !
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Terjadi Gangguan Tampilan Aplikasi</h2>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Sistem mendeteksi error tak terduga saat memuat halaman. Klik tombol di bawah untuk memulihkan tampilan secara otomatis.
+              </p>
+              {this.state.errorMessage && (
+                <p className="mt-2 p-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-mono text-rose-700 break-words">
+                  {this.state.errorMessage}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={this.handleRecover}
+              className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl cursor-pointer transition-colors"
+            >
+              Muat Ulang &amp; Pulihkan Aplikasi
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function App() {
   return (
-    <AppProvider>
-      <MainApp />
-    </AppProvider>
+    <AppErrorBoundary>
+      <AppProvider>
+        <MainApp />
+      </AppProvider>
+    </AppErrorBoundary>
   );
 }
 

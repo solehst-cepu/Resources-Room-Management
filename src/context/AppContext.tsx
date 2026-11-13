@@ -308,108 +308,143 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_KEY_PREFIX = 'lazuardi_rr_';
 
+function safeStorageGet<T>(key: string, fallback: T): T {
+  try {
+    const saved = localStorage.getItem(key);
+    if (!saved || saved === 'null' || saved === 'undefined') return fallback;
+    return JSON.parse(saved) as T;
+  } catch (err) {
+    console.warn(`[Storage] Failed reading key "${key}", using fallback:`, err);
+    return fallback;
+  }
+}
+
+function sanitizeRequestsForStorage(reqs: ServiceRequest[]): ServiceRequest[] {
+  // Keep at most 100 latest requests in localStorage and strip oversized inline base64 data URLs (>32KB)
+  // so localStorage never hits the 5MB browser quota limit.
+  const MAX_INLINE_DATA_LEN = 32 * 1024;
+  return reqs.slice(0, 100).map((r) => {
+    let updated = r;
+    if (r.photocopyDetail?.photoUrl && r.photocopyDetail.photoUrl.startsWith('data:') && r.photocopyDetail.photoUrl.length > MAX_INLINE_DATA_LEN) {
+      updated = {
+        ...updated,
+        photocopyDetail: {
+          ...r.photocopyDetail,
+          photoUrl: undefined,
+        },
+      };
+    }
+    if (r.laminatingDetail?.photoUrl && r.laminatingDetail.photoUrl.startsWith('data:') && r.laminatingDetail.photoUrl.length > MAX_INLINE_DATA_LEN) {
+      updated = {
+        ...updated,
+        laminatingDetail: {
+          ...r.laminatingDetail,
+          photoUrl: undefined,
+        },
+      };
+    }
+    return updated;
+  });
+}
+
+function safeStorageSet(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    console.warn(`[Storage] Failed writing key "${key}" (quota/storage error):`, err);
+    // If quota exceeded when saving requests, try saving a smaller slice without attachments
+    if (key === `${STORAGE_KEY_PREFIX}requests` && Array.isArray(value)) {
+      try {
+        const compact = sanitizeRequestsForStorage(value as ServiceRequest[]).slice(0, 30);
+        localStorage.setItem(key, JSON.stringify(compact));
+      } catch {
+        try {
+          localStorage.removeItem(key);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load initial states from LocalStorage or defaults
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    try {
-      const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}current_user`);
-      return (saved && saved !== 'null' && saved !== 'undefined') ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
+    return safeStorageGet<User | null>(`${STORAGE_KEY_PREFIX}current_user`, null);
   });
 
   const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}users`);
-    return saved ? JSON.parse(saved) : INITIAL_USERS;
+    return safeStorageGet<User[]>(`${STORAGE_KEY_PREFIX}users`, INITIAL_USERS);
   });
 
   const [roleConfigs, setRoleConfigs] = useState<RoleConfig[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}role_configs`);
-    return saved ? JSON.parse(saved) : INITIAL_ROLES;
+    return safeStorageGet<RoleConfig[]>(`${STORAGE_KEY_PREFIX}role_configs`, INITIAL_ROLES);
   });
 
   const [items, setItems] = useState<MasterItem[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}items`);
-    return saved ? JSON.parse(saved) : INITIAL_ITEMS;
+    return safeStorageGet<MasterItem[]>(`${STORAGE_KEY_PREFIX}items`, INITIAL_ITEMS);
   });
 
   const [uniforms, setUniforms] = useState<UniformItem[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}uniforms`);
-    return saved ? JSON.parse(saved) : INITIAL_UNIFORMS;
+    return safeStorageGet<UniformItem[]>(`${STORAGE_KEY_PREFIX}uniforms`, INITIAL_UNIFORMS);
   });
 
   const [waterLocations, setWaterLocations] = useState<WaterLocation[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}water_locations`);
-    return saved ? JSON.parse(saved) : INITIAL_WATER_LOCATIONS;
+    return safeStorageGet<WaterLocation[]>(`${STORAGE_KEY_PREFIX}water_locations`, INITIAL_WATER_LOCATIONS);
   });
 
   const [waterInventory, setWaterInventory] = useState<WaterInventory>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}water_inventory`);
-    return saved ? JSON.parse(saved) : INITIAL_WATER_INVENTORY;
+    return safeStorageGet<WaterInventory>(`${STORAGE_KEY_PREFIX}water_inventory`, INITIAL_WATER_INVENTORY);
   });
 
   const [waterProviderLogs, setWaterProviderLogs] = useState<WaterProviderLog[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}water_provider_logs`);
-    return saved ? JSON.parse(saved) : INITIAL_WATER_PROVIDER_LOGS;
+    return safeStorageGet<WaterProviderLog[]>(`${STORAGE_KEY_PREFIX}water_provider_logs`, INITIAL_WATER_PROVIDER_LOGS);
   });
 
   const [waterOpnameRecords, setWaterOpnameRecords] = useState<WaterOpnameRecord[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}water_opname_records`);
-    return saved ? JSON.parse(saved) : INITIAL_WATER_OPNAME_RECORDS;
+    return safeStorageGet<WaterOpnameRecord[]>(`${STORAGE_KEY_PREFIX}water_opname_records`, INITIAL_WATER_OPNAME_RECORDS);
   });
 
   const [requests, setRequests] = useState<ServiceRequest[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}requests`);
-    if (saved) {
-      try {
-        const parsed: ServiceRequest[] = JSON.parse(saved);
-        const deletedIds = getDeletedRequestIds();
-        const existingIds = new Set(parsed.map(r => r.id));
-        const missingInitial = INITIAL_REQUESTS.filter(
-          ir => !existingIds.has(ir.id) && !deletedIds.has(ir.id)
-        );
-        return missingInitial.length > 0 ? [...parsed, ...missingInitial] : parsed;
-      } catch {
-        return INITIAL_REQUESTS;
-      }
+    const parsed = safeStorageGet<ServiceRequest[] | null>(`${STORAGE_KEY_PREFIX}requests`, null);
+    if (Array.isArray(parsed)) {
+      const deletedIds = getDeletedRequestIds();
+      const existingIds = new Set(parsed.map(r => r.id));
+      const missingInitial = INITIAL_REQUESTS.filter(
+        ir => !existingIds.has(ir.id) && !deletedIds.has(ir.id)
+      );
+      return missingInitial.length > 0 ? [...parsed, ...missingInitial] : parsed;
     }
     return INITIAL_REQUESTS;
   });
 
   const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}stock_transactions`);
-    return saved ? JSON.parse(saved) : INITIAL_STOCK_TRANSACTIONS;
+    return safeStorageGet<StockTransaction[]>(`${STORAGE_KEY_PREFIX}stock_transactions`, INITIAL_STOCK_TRANSACTIONS);
   });
 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}audit_logs`);
-    return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
+    return safeStorageGet<AuditLog[]>(`${STORAGE_KEY_PREFIX}audit_logs`, INITIAL_AUDIT_LOGS);
   });
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}notifications`);
-    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
+    return safeStorageGet<AppNotification[]>(`${STORAGE_KEY_PREFIX}notifications`, INITIAL_NOTIFICATIONS);
   });
 
   const [units, setUnits] = useState<MasterUnit[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}units`);
-    return saved ? JSON.parse(saved) : INITIAL_UNITS;
+    return safeStorageGet<MasterUnit[]>(`${STORAGE_KEY_PREFIX}units`, INITIAL_UNITS);
   });
 
   const [departments, setDepartments] = useState<MasterDepartment[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}departments`);
-    return saved ? JSON.parse(saved) : INITIAL_DEPARTMENTS;
+    return safeStorageGet<MasterDepartment[]>(`${STORAGE_KEY_PREFIX}departments`, INITIAL_DEPARTMENTS);
   });
 
   const [suppliers, setSuppliers] = useState<MasterSupplier[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}suppliers`);
-    return saved ? JSON.parse(saved) : INITIAL_SUPPLIERS;
+    return safeStorageGet<MasterSupplier[]>(`${STORAGE_KEY_PREFIX}suppliers`, INITIAL_SUPPLIERS);
   });
 
   const [locations, setLocations] = useState<MasterLocation[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}locations`);
-    return saved ? JSON.parse(saved) : INITIAL_LOCATIONS;
+    return safeStorageGet<MasterLocation[]>(`${STORAGE_KEY_PREFIX}locations`, INITIAL_LOCATIONS);
   });
 
   const [vehicleFleet, setVehicleFleet] = useState<VehicleFleetItem[]>(() => {
@@ -426,13 +461,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }));
         const hasRentalSeeded = localStorage.getItem(`${STORAGE_KEY_PREFIX}vehicle_fleet_rental_seeded`);
         if (!hasRentalSeeded && !normalized.some(i => i.ownershipType === 'Sewa / Vendor')) {
-          localStorage.setItem(`${STORAGE_KEY_PREFIX}vehicle_fleet_rental_seeded`, 'true');
+          try { localStorage.setItem(`${STORAGE_KEY_PREFIX}vehicle_fleet_rental_seeded`, 'true'); } catch {}
           const initialRentals = INITIAL_VEHICLE_FLEET.filter(i => i.ownershipType === 'Sewa / Vendor');
           return [...normalized, ...initialRentals];
         }
         return normalized;
       }
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}vehicle_fleet_rental_seeded`, 'true');
+      try { localStorage.setItem(`${STORAGE_KEY_PREFIX}vehicle_fleet_rental_seeded`, 'true'); } catch {}
       return INITIAL_VEHICLE_FLEET;
     } catch {
       return INITIAL_VEHICLE_FLEET;
@@ -883,81 +918,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Sync to LocalStorage
+  // Sync to LocalStorage (quota-safe so large base64 attachments never crash the app)
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}current_user`, JSON.stringify(currentUser));
+      safeStorageSet(`${STORAGE_KEY_PREFIX}current_user`, currentUser);
     } else {
-      localStorage.removeItem(`${STORAGE_KEY_PREFIX}current_user`);
+      try {
+        localStorage.removeItem(`${STORAGE_KEY_PREFIX}current_user`);
+      } catch {
+        // ignore
+      }
     }
   }, [currentUser]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}users`, JSON.stringify(users));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}users`, users);
   }, [users]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}role_configs`, JSON.stringify(roleConfigs));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}role_configs`, roleConfigs);
   }, [roleConfigs]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}items`, JSON.stringify(items));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}items`, items);
   }, [items]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}uniforms`, JSON.stringify(uniforms));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}uniforms`, uniforms);
   }, [uniforms]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}water_locations`, JSON.stringify(waterLocations));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}water_locations`, waterLocations);
   }, [waterLocations]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}water_inventory`, JSON.stringify(waterInventory));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}water_inventory`, waterInventory);
   }, [waterInventory]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}water_provider_logs`, JSON.stringify(waterProviderLogs));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}water_provider_logs`, waterProviderLogs);
   }, [waterProviderLogs]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}water_opname_records`, JSON.stringify(waterOpnameRecords));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}water_opname_records`, waterOpnameRecords);
   }, [waterOpnameRecords]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}requests`, JSON.stringify(requests));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}requests`, sanitizeRequestsForStorage(requests));
   }, [requests]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}stock_transactions`, JSON.stringify(stockTransactions));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}stock_transactions`, stockTransactions);
   }, [stockTransactions]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}audit_logs`, JSON.stringify(auditLogs));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}audit_logs`, auditLogs.slice(0, 200));
   }, [auditLogs]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}notifications`, JSON.stringify(notifications));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}notifications`, notifications.slice(0, 100));
   }, [notifications]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}units`, JSON.stringify(units));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}units`, units);
   }, [units]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}departments`, JSON.stringify(departments));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}departments`, departments);
   }, [departments]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}suppliers`, JSON.stringify(suppliers));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}suppliers`, suppliers);
   }, [suppliers]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}locations`, JSON.stringify(locations));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}locations`, locations);
   }, [locations]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}vehicle_fleet`, JSON.stringify(vehicleFleet));
+    safeStorageSet(`${STORAGE_KEY_PREFIX}vehicle_fleet`, vehicleFleet);
   }, [vehicleFleet]);
 
   // Toast functions

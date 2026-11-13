@@ -70,7 +70,10 @@ export const WaterServiceView: React.FC<WaterServiceViewProps> = ({ onOpenReceip
     showToast
   } = useApp();
 
-  const isAdminOrSuperAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+  const isAdminOrSuperAdmin =
+    currentUser?.role === 'super_admin' ||
+    currentUser?.role === 'admin_rr' ||
+    (currentUser?.role as string) === 'admin';
 
   const [activeTab, setActiveTab] = useState<'lokasi' | 'permintaan' | 'provider' | 'opname'>('lokasi');
   
